@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-// Your Google Apps Script Web App URL
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwlnNqnu5gV4ggqg0ZyWcgtECWGoZzbYCcjBky9_W8YBxJN0tqBiJlbTvfd8EebFE4U/exec';
+// REPLACE THIS with your Sheet.best API URL
+const API_URL = 'https://api.sheetbest.com/sheets/a674d991-727a-44fb-865b-774f4efb8a32';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -33,16 +33,24 @@ function App() {
   const loadData = async () => {
     try {
       setLoading(true);
-      // Use GET request with callback for JSONP
-      const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=get`);
-      const data = await response.json();
       
-      setStock(data.stock || []);
-      setBins(data.bins || []);
-      setOrders(data.orders || []);
+      // Fetch from each sheet using sheet name as query parameter
+      const [stockRes, binsRes, ordersRes] = await Promise.all([
+        fetch(`${API_URL}/Stock`),
+        fetch(`${API_URL}/Bins`),
+        fetch(`${API_URL}/Orders`)
+      ]);
+      
+      const stockData = await stockRes.json();
+      const binsData = await binsRes.json();
+      const ordersData = await ordersRes.json();
+      
+      setStock(stockData || []);
+      setBins(binsData || []);
+      setOrders(ordersData || []);
     } catch (error) {
       console.error('Error loading data:', error);
-      setMessage('❌ Failed to load data');
+      setMessage('❌ Failed to load data. Check your API URL');
     } finally {
       setLoading(false);
     }
@@ -56,9 +64,16 @@ function App() {
     
     setSaving(true);
     try {
-      // Use GET request with parameters
-      const url = `${GOOGLE_SCRIPT_URL}?action=add&table=Stock&sku=${encodeURIComponent(newProduct.sku)}&description=${encodeURIComponent(newProduct.description)}&quantity=${newProduct.quantity}&bin=${encodeURIComponent(newProduct.bin || 'Unassigned')}`;
-      await fetch(url);
+      await fetch(`${API_URL}/Stock`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku: newProduct.sku,
+          description: newProduct.description,
+          quantity: parseInt(newProduct.quantity) || 0,
+          bin: newProduct.bin || 'Unassigned'
+        })
+      });
       
       setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
       setMessage('✅ Product added successfully!');
@@ -79,8 +94,15 @@ function App() {
     
     setSaving(true);
     try {
-      const url = `${GOOGLE_SCRIPT_URL}?action=add&table=Bins&bin_id=${encodeURIComponent(newBin.bin_id)}&zone=${encodeURIComponent(newBin.zone || 'General')}&status=Available`;
-      await fetch(url);
+      await fetch(`${API_URL}/Bins`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bin_id: newBin.bin_id,
+          zone: newBin.zone || 'General',
+          status: 'Available'
+        })
+      });
       
       setNewBin({ bin_id: '', zone: '' });
       setMessage('✅ Bin added successfully!');
@@ -101,8 +123,16 @@ function App() {
     
     setSaving(true);
     try {
-      const url = `${GOOGLE_SCRIPT_URL}?action=add&table=Orders&order_id=${encodeURIComponent(newOrder.order_id)}&customer=${encodeURIComponent(newOrder.customer)}&status=Open`;
-      await fetch(url);
+      await fetch(`${API_URL}/Orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: newOrder.order_id,
+          customer: newOrder.customer,
+          status: 'Open',
+          created_at: new Date().toISOString()
+        })
+      });
       
       setNewOrder({ order_id: '', customer: '' });
       setMessage('✅ Order created successfully!');
@@ -120,8 +150,9 @@ function App() {
     
     setSaving(true);
     try {
-      const url = `${GOOGLE_SCRIPT_URL}?action=delete&table=Stock&sku=${encodeURIComponent(sku)}`;
-      await fetch(url);
+      await fetch(`${API_URL}/Stock/sku/${sku}`, {
+        method: 'DELETE'
+      });
       
       setMessage('✅ Product deleted successfully!');
       await loadData();
