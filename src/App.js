@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// REPLACE THIS with your Sheet.best API URL
+// Your working Sheet.best API URL
 const API_URL = 'https://api.sheetbest.com/sheets/a674d991-727a-44fb-865b-774f4efb8a32';
 
 function App() {
@@ -11,7 +11,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  
+
   // Form states
   const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
   const [newBin, setNewBin] = useState({ bin_id: '', zone: '' });
@@ -34,23 +34,37 @@ function App() {
     try {
       setLoading(true);
       
-      // Fetch from each sheet using sheet name as query parameter
-      const [stockRes, binsRes, ordersRes] = await Promise.all([
-        fetch(`${API_URL}/Stock`),
-        fetch(`${API_URL}/Bins`),
-        fetch(`${API_URL}/Orders`)
-      ]);
+      // Fetch from each sheet
+      const stockRes = await fetch(`${API_URL}/Stock`);
+      const binsRes = await fetch(`${API_URL}/Bins`);
+      const ordersRes = await fetch(`${API_URL}/Orders`);
       
-      const stockData = await stockRes.json();
-      const binsData = await binsRes.json();
-      const ordersData = await ordersRes.json();
+      let stockData = [];
+      let binsData = [];
+      let ordersData = [];
       
-      setStock(stockData || []);
-      setBins(binsData || []);
-      setOrders(ordersData || []);
+      if (stockRes.ok) {
+        stockData = await stockRes.json();
+        stockData = Array.isArray(stockData) ? stockData : [];
+      }
+      
+      if (binsRes.ok) {
+        binsData = await binsRes.json();
+        binsData = Array.isArray(binsData) ? binsData : [];
+      }
+      
+      if (ordersRes.ok) {
+        ordersData = await ordersRes.json();
+        ordersData = Array.isArray(ordersData) ? ordersData : [];
+      }
+      
+      setStock(stockData);
+      setBins(binsData);
+      setOrders(ordersData);
+      
     } catch (error) {
       console.error('Error loading data:', error);
-      setMessage('❌ Failed to load data. Check your API URL');
+      setMessage('❌ Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -64,7 +78,7 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(`${API_URL}/Stock`, {
+      const response = await fetch(`${API_URL}/Stock`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -75,9 +89,13 @@ function App() {
         })
       });
       
-      setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
-      setMessage('✅ Product added successfully!');
-      await loadData();
+      if (response.ok) {
+        setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
+        setMessage('✅ Product added successfully!');
+        await loadData();
+      } else {
+        setMessage('❌ Failed to add product');
+      }
     } catch (error) {
       console.error('Error adding product:', error);
       setMessage('❌ Failed to add product');
@@ -94,7 +112,7 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(`${API_URL}/Bins`, {
+      const response = await fetch(`${API_URL}/Bins`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -104,9 +122,13 @@ function App() {
         })
       });
       
-      setNewBin({ bin_id: '', zone: '' });
-      setMessage('✅ Bin added successfully!');
-      await loadData();
+      if (response.ok) {
+        setNewBin({ bin_id: '', zone: '' });
+        setMessage('✅ Bin added successfully!');
+        await loadData();
+      } else {
+        setMessage('❌ Failed to add bin');
+      }
     } catch (error) {
       console.error('Error adding bin:', error);
       setMessage('❌ Failed to add bin');
@@ -123,7 +145,7 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(`${API_URL}/Orders`, {
+      const response = await fetch(`${API_URL}/Orders`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -134,9 +156,13 @@ function App() {
         })
       });
       
-      setNewOrder({ order_id: '', customer: '' });
-      setMessage('✅ Order created successfully!');
-      await loadData();
+      if (response.ok) {
+        setNewOrder({ order_id: '', customer: '' });
+        setMessage('✅ Order created successfully!');
+        await loadData();
+      } else {
+        setMessage('❌ Failed to create order');
+      }
     } catch (error) {
       console.error('Error adding order:', error);
       setMessage('❌ Failed to create order');
@@ -150,12 +176,16 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(`${API_URL}/Stock/sku/${sku}`, {
+      const response = await fetch(`${API_URL}/Stock/sku/${sku}`, {
         method: 'DELETE'
       });
       
-      setMessage('✅ Product deleted successfully!');
-      await loadData();
+      if (response.ok) {
+        setMessage('✅ Product deleted successfully!');
+        await loadData();
+      } else {
+        setMessage('❌ Failed to delete product');
+      }
     } catch (error) {
       console.error('Error deleting product:', error);
       setMessage('❌ Failed to delete product');
@@ -245,7 +275,7 @@ function App() {
               <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
                 <div className="text-4xl mb-2">📦</div>
                 <h3 className="text-sm opacity-90">Total Stock Units</h3>
-                <p className="text-3xl font-bold">{stock.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)}</p>
+                <p className="text-3xl font-bold">{stock.reduce((sum, item) => sum + (parseInt(item?.quantity) || 0), 0)}</p>
               </div>
               <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
                 <div className="text-4xl mb-2">🏷️</div>
@@ -263,8 +293,8 @@ function App() {
               <h3 className="text-xl font-bold mb-4">Recent Stock Items</h3>
               {stock.slice(0, 5).map((item, index) => (
                 <div key={index} className="border-b py-2">
-                  <p className="font-semibold">{item.description}</p>
-                  <p className="text-sm text-gray-600">SKU: {item.sku} | Qty: {item.quantity} | Bin: {item.bin}</p>
+                  <p className="font-semibold">{item?.description || 'N/A'}</p>
+                  <p className="text-sm text-gray-600">SKU: {item?.sku || 'N/A'} | Qty: {item?.quantity || 0} | Bin: {item?.bin || 'N/A'}</p>
                 </div>
               ))}
               {stock.length === 0 && <p className="text-gray-500">No items yet. Add your first product!</p>}
@@ -442,6 +472,7 @@ function App() {
                         <p className="font-semibold text-lg">{order.order_id}</p>
                         <p className="text-sm text-gray-600">👤 Customer: {order.customer}</p>
                         <p className="text-sm text-gray-600">📊 Status: <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">{order.status}</span></p>
+                        {order.created_at && <p className="text-xs text-gray-400 mt-1">Created: {new Date(order.created_at).toLocaleDateString()}</p>}
                       </div>
                       <div className="text-2xl">📋</div>
                     </div>
