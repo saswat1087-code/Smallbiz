@@ -32,12 +32,12 @@ function App() {
     try {
       setLoading(true);
       
-      const response = await fetch(`${API_URL}?limit=1000`);
+      const response = await fetch(API_URL);
       const allData = await response.json();
       
       console.log('📊 All data from sheet:', allData);
       
-      // Filter data
+      // Filter data based on available fields
       const stockData = allData.filter(row => row.sku && row.sku !== '' && !row.order_id);
       const binsData = allData.filter(row => row.bin_id && row.bin_id !== '');
       const ordersData = allData.filter(row => row.order_id && row.order_id !== '');
@@ -78,9 +78,12 @@ function App() {
         setMessage('✅ Product added successfully!');
         await loadData();
       } else {
+        const error = await response.text();
+        console.error('Add product error:', error);
         setMessage('❌ Failed to add product');
       }
     } catch (error) {
+      console.error('Error:', error);
       setMessage('❌ Failed to add product');
     } finally {
       setSaving(false);
@@ -143,9 +146,12 @@ function App() {
         setMessage('✅ Order created successfully!');
         await loadData();
       } else {
+        const error = await response.text();
+        console.error('Add order error:', error);
         setMessage('❌ Failed to create order');
       }
     } catch (error) {
+      console.error('Error:', error);
       setMessage('❌ Failed to create order');
     } finally {
       setSaving(false);
@@ -164,22 +170,15 @@ function App() {
       }
       
       if (!orderToUpdate.id) {
-        setMessage('❌ This order cannot be updated. Please delete and recreate it.');
+        setMessage('❌ Please delete and recreate this order to enable status updates');
         setSaving(false);
         return;
       }
       
-      const updateData = {
-        order_id: orderToUpdate.order_id,
-        customer: orderToUpdate.customer,
-        status: newStatus,
-        created_at: orderToUpdate.created_at || new Date().toISOString()
-      };
-      
       const response = await fetch(`${API_URL}/${orderToUpdate.id}`, {
-        method: 'PUT',
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updateData)
+        body: JSON.stringify({ status: newStatus })
       });
       
       if (response.ok) {
@@ -197,6 +196,10 @@ function App() {
   };
 
   const deleteOrder = async (orderId, rowId) => {
+    if (!rowId) {
+      setMessage('❌ Cannot delete: Order has no ID');
+      return;
+    }
     if (!window.confirm(`Delete order ${orderId}?`)) return;
     
     setSaving(true);
@@ -345,7 +348,6 @@ function App() {
                 <button onClick={() => deleteProduct(item.id, item.sku)} className="text-red-500 hover:text-red-700">🗑️</button>
               </div>
             ))}
-            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No items yet. Add your first product!</p>}
           </div>
         )}
 
@@ -377,7 +379,6 @@ function App() {
                 </div>
               ))}
             </div>
-            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin!</p>}
           </div>
         )}
 
@@ -405,7 +406,7 @@ function App() {
                       <p className="text-xs text-gray-400">Created: {new Date(order.created_at).toLocaleDateString()}</p>
                     )}
                     {!order.id && (
-                      <p className="text-xs text-red-500 mt-1">⚠️ Cannot update - please recreate this order</p>
+                      <p className="text-xs text-red-500 mt-1">⚠️ Delete & recreate to enable updates</p>
                     )}
                   </div>
                   <div className="flex gap-2">
