@@ -35,17 +35,24 @@ function App() {
       const response = await fetch(`${API_URL}?limit=1000`);
       const allData = await response.json();
       
-      console.log('All data from sheet:', allData);
+      console.log('📊 All data from sheet:', allData);
       
-      // Filter data based on the actual data structure
-      // Bins have bin_id field, Orders have order_id field, Stock have sku field
-      const stockData = allData.filter(row => row.sku && row.sku !== '' && row.type !== 'bin' && row.type !== 'order');
+      // Filter data - orders have order_id, stock has sku, bins have bin_id
+      const stockData = allData.filter(row => row.sku && row.sku !== '' && !row.order_id);
       const binsData = allData.filter(row => row.bin_id && row.bin_id !== '');
       const ordersData = allData.filter(row => row.order_id && row.order_id !== '');
       
+      // Ensure each order has a status field, default to 'Open' if missing
+      const ordersWithStatus = ordersData.map(order => ({
+        ...order,
+        status: order.status || 'Open'
+      }));
+      
       setStock(stockData);
       setBins(binsData);
-      setOrders(ordersData);
+      setOrders(ordersWithStatus);
+      
+      console.log('📦 Orders loaded:', ordersWithStatus);
       
     } catch (error) {
       console.error('Error loading data:', error);
@@ -67,17 +74,10 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'stock',
           sku: newProduct.sku,
           description: newProduct.description,
           quantity: parseInt(newProduct.quantity) || 0,
-          bin: newProduct.bin || 'Unassigned',
-          bin_id: '',
-          zone: '',
-          status: '',
-          order_id: '',
-          customer: '',
-          created_at: ''
+          bin: newProduct.bin || 'Unassigned'
         })
       });
       
@@ -107,17 +107,9 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'bin',
-          sku: '',
-          description: '',
-          quantity: '',
-          bin: '',
           bin_id: newBin.bin_id,
           zone: newBin.zone || 'General',
-          status: 'Available',
-          order_id: '',
-          customer: '',
-          created_at: ''
+          status: 'Available'
         })
       });
       
@@ -147,16 +139,9 @@ function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          type: 'order',
-          sku: '',
-          description: '',
-          quantity: '',
-          bin: '',
-          bin_id: '',
-          zone: '',
-          status: 'Open',
           order_id: newOrder.order_id,
           customer: newOrder.customer,
+          status: 'Open',
           created_at: new Date().toISOString()
         })
       });
@@ -178,30 +163,58 @@ function App() {
   const updateOrderStatus = async (orderId, newStatus) => {
     setSaving(true);
     try {
+      console.log(`🔄 Updating order ${orderId} to status: ${newStatus}`);
+      
+      // Find the order to update
       const orderToUpdate = orders.find(order => order.order_id === orderId);
-      if (!orderToUpdate || !orderToUpdate.id) {
+      
+      if (!orderToUpdate) {
         setMessage('❌ Could not find order');
         setSaving(false);
         return;
       }
       
-      const response = await fetch(`${API_URL}/${orderToUpdate.id}`, {
+      // Get the row ID (Sheet.best assigns an 'id' field to each row)
+      const rowId = orderToUpdate.id;
+      
+      if (!rowId) {
+        console.error('No id field found in order:', orderToUpdate);
+        setMessage('❌ Cannot update: Missing row ID. Please recreate this order.');
+        setSaving(false);
+        return;
+      }
+      
+      // Create update object with all existing fields plus new status
+      const updateData = {
+        ...orderToUpdate,
+        status: newStatus
+      };
+      
+      // Remove the id field from the update data (don't send it back)
+      delete updateData.id;
+      
+      console.log('📤 Sending update to row:', rowId);
+      console.log('📤 Update data:', updateData);
+      
+      const response = await fetch(`${API_URL}/${rowId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...orderToUpdate,
-          status: newStatus
-        })
+        body: JSON.stringify(updateData)
       });
       
       if (response.ok) {
-        setMessage(`✅ Order status updated to ${newStatus}`);
-        await loadData();
+        const result = await response.json();
+        console.log('✅ Update successful:', result);
+        setMessage(`✅ Order ${orderId} status updated to ${newStatus}`);
+        await loadData(); // Refresh the data
         setShowStatusMenu(null);
       } else {
-        setMessage('❌ Failed to update order status');
+        const errorText = await response.text();
+        console.error('❌ Update failed:', response.status, errorText);
+        setMessage(`❌ Failed to update order status (${response.status})`);
       }
     } catch (error) {
+      console.error('❌ Error updating order:', error);
       setMessage('❌ Failed to update order status');
     } finally {
       setSaving(false);
@@ -299,22 +312,6 @@ function App() {
                 <p className="text-3xl font-bold">{orders.length}</p>
               </div>
             </div>
-            
-            <div className="mt-8 bg-white rounded-lg shadow p-6">
-              <h3 className="text-xl font-bold mb-4">Recent Orders</h3>
-              {orders.slice(0, 5).map((order, index) => (
-                <div key={index} className="border-b py-2 flex justify-between items-center">
-                  <div>
-                    <p className="font-semibold">{order.order_id}</p>
-                    <p className="text-sm text-gray-600">Customer: {order.customer}</p>
-                  </div>
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${getStatusColor(order.status)}`}>
-                    {order.status || 'Open'}
-                  </span>
-                </div>
-              ))}
-              {orders.length === 0 && <p className="text-gray-500">No orders yet</p>}
-            </div>
           </div>
         )}
 
@@ -343,7 +340,6 @@ function App() {
                 <button onClick={() => deleteItem(item.id, 'product', item.sku)} className="text-red-500 hover:text-red-700">🗑️</button>
               </div>
             ))}
-            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No items yet. Add your first product!</p>}
           </div>
         )}
 
@@ -375,7 +371,6 @@ function App() {
                 </div>
               ))}
             </div>
-            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin!</p>}
           </div>
         )}
 
@@ -419,40 +414,27 @@ function App() {
                           <button
                             onClick={() => updateOrderStatus(order.order_id, 'Open')}
                             className="block w-full text-left px-4 py-2 text-sm text-yellow-700 hover:bg-yellow-50"
+                            disabled={saving}
                           >
                             📋 Open
                           </button>
                           <button
                             onClick={() => updateOrderStatus(order.order_id, 'In Transit')}
                             className="block w-full text-left px-4 py-2 text-sm text-blue-700 hover:bg-blue-50"
+                            disabled={saving}
                           >
                             🚚 In Transit
                           </button>
                           <button
                             onClick={() => updateOrderStatus(order.order_id, 'Closed')}
                             className="block w-full text-left px-4 py-2 text-sm text-green-700 hover:bg-green-50"
+                            disabled={saving}
                           >
                             ✅ Closed
                           </button>
                         </div>
                       </div>
                     )}
-                  </div>
-                </div>
-                
-                <div className="mt-3 pt-3 border-t">
-                  <div className="flex items-center gap-2 text-xs">
-                    <span className={`px-2 py-0.5 rounded ${order.status === 'Open' ? 'bg-yellow-500 text-white' : 'bg-gray-200'}`}>
-                      📋 Open
-                    </span>
-                    <span className="text-gray-400">→</span>
-                    <span className={`px-2 py-0.5 rounded ${order.status === 'In Transit' ? 'bg-blue-500 text-white' : 'bg-gray-200'}`}>
-                      🚚 In Transit
-                    </span>
-                    <span className="text-gray-400">→</span>
-                    <span className={`px-2 py-0.5 rounded ${order.status === 'Closed' ? 'bg-green-500 text-white' : 'bg-gray-200'}`}>
-                      ✅ Closed
-                    </span>
                   </div>
                 </div>
               </div>
