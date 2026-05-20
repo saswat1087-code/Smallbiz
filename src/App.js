@@ -42,13 +42,6 @@ function App() {
       const binsData = allData.filter(row => row.bin_id && row.bin_id !== '');
       const ordersData = allData.filter(row => row.order_id && row.order_id !== '');
       
-      // Check if orders have IDs
-      ordersData.forEach(order => {
-        if (!order.id) {
-          console.warn(`⚠️ Order ${order.order_id} has no 'id' field - updates will not work!`);
-        }
-      });
-      
       setStock(stockData);
       setBins(binsData);
       setOrders(ordersData);
@@ -58,6 +51,71 @@ function App() {
       setMessage('❌ Failed to load data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const addProduct = async () => {
+    if (!newProduct.sku || !newProduct.description) {
+      setMessage('❌ Please fill in SKU and Description');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sku: newProduct.sku,
+          description: newProduct.description,
+          quantity: parseInt(newProduct.quantity) || 0,
+          bin: newProduct.bin || 'Unassigned'
+        })
+      });
+      
+      if (response.ok) {
+        setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
+        setMessage('✅ Product added successfully!');
+        await loadData();
+      } else {
+        setMessage('❌ Failed to add product');
+      }
+    } catch (error) {
+      setMessage('❌ Failed to add product');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addBin = async () => {
+    if (!newBin.bin_id) {
+      setMessage('❌ Please enter Bin ID');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bin_id: newBin.bin_id,
+          zone: newBin.zone || 'General',
+          status: 'Available'
+        })
+      });
+      
+      if (response.ok) {
+        setNewBin({ bin_id: '', zone: '' });
+        setMessage('✅ Bin added successfully!');
+        await loadData();
+      } else {
+        setMessage('❌ Failed to add bin');
+      }
+    } catch (error) {
+      setMessage('❌ Failed to add bin');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -81,8 +139,6 @@ function App() {
       });
       
       if (response.ok) {
-        const result = await response.json();
-        console.log('✅ Order created with ID:', result);
         setNewOrder({ order_id: '', customer: '' });
         setMessage('✅ Order created successfully!');
         await loadData();
@@ -99,9 +155,6 @@ function App() {
   const updateOrderStatus = async (orderId, newStatus) => {
     setSaving(true);
     try {
-      console.log(`🔄 Attempting to update order ${orderId} to status: ${newStatus}`);
-      
-      // Find the order to update
       const orderToUpdate = orders.find(order => order.order_id === orderId);
       
       if (!orderToUpdate) {
@@ -110,20 +163,12 @@ function App() {
         return;
       }
       
-      console.log('📋 Found order:', orderToUpdate);
-      
-      // Check if the order has an 'id' field
       if (!orderToUpdate.id) {
-        console.error('❌ Order has no id field!', orderToUpdate);
         setMessage('❌ This order cannot be updated. Please delete and recreate it.');
         setSaving(false);
         return;
       }
       
-      const rowId = orderToUpdate.id;
-      console.log('🆔 Using row ID:', rowId);
-      
-      // Create update object
       const updateData = {
         order_id: orderToUpdate.order_id,
         customer: orderToUpdate.customer,
@@ -131,9 +176,7 @@ function App() {
         created_at: orderToUpdate.created_at || new Date().toISOString()
       };
       
-      console.log('📤 Update data:', updateData);
-      
-      const response = await fetch(`${API_URL}/${rowId}`, {
+      const response = await fetch(`${API_URL}/${orderToUpdate.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updateData)
@@ -144,12 +187,9 @@ function App() {
         await loadData();
         setShowStatusMenu(null);
       } else {
-        const errorText = await response.text();
-        console.error('❌ Update failed:', errorText);
-        setMessage(`❌ Update failed: ${response.status}`);
+        setMessage(`❌ Failed to update order status`);
       }
     } catch (error) {
-      console.error('❌ Error:', error);
       setMessage('❌ Failed to update order');
     } finally {
       setSaving(false);
@@ -166,6 +206,36 @@ function App() {
       await loadData();
     } catch (error) {
       setMessage(`❌ Failed to delete order`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteProduct = async (productId, sku) => {
+    if (!window.confirm(`Delete product ${sku}?`)) return;
+    
+    setSaving(true);
+    try {
+      await fetch(`${API_URL}/${productId}`, { method: 'DELETE' });
+      setMessage(`✅ Product deleted successfully!`);
+      await loadData();
+    } catch (error) {
+      setMessage(`❌ Failed to delete product`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteBin = async (binId, bin_id) => {
+    if (!window.confirm(`Delete bin ${bin_id}?`)) return;
+    
+    setSaving(true);
+    try {
+      await fetch(`${API_URL}/${binId}`, { method: 'DELETE' });
+      setMessage(`✅ Bin deleted successfully!`);
+      await loadData();
+    } catch (error) {
+      setMessage(`❌ Failed to delete bin`);
     } finally {
       setSaving(false);
     }
@@ -222,6 +292,95 @@ function App() {
           </button>
         </div>
 
+        {activeTab === 'dashboard' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Dashboard Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
+                <div className="text-4xl mb-2">📦</div>
+                <h3 className="text-sm opacity-90">Total Stock Units</h3>
+                <p className="text-3xl font-bold">{stock.reduce((sum, item) => sum + (parseInt(item?.quantity) || 0), 0)}</p>
+              </div>
+              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
+                <div className="text-4xl mb-2">🏷️</div>
+                <h3 className="text-sm opacity-90">Total Products</h3>
+                <p className="text-3xl font-bold">{stock.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow p-6 text-white">
+                <div className="text-4xl mb-2">🗑️</div>
+                <h3 className="text-sm opacity-90">Total Bins</h3>
+                <p className="text-3xl font-bold">{bins.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg shadow p-6 text-white">
+                <div className="text-4xl mb-2">📋</div>
+                <h3 className="text-sm opacity-90">Total Orders</h3>
+                <p className="text-3xl font-bold">{orders.length}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'stock' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">📦 Stock Management</h2>
+            
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3 text-lg">Add New Item</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input type="text" placeholder="SKU" className="border p-2 rounded-lg" value={newProduct.sku} onChange={(e) => setNewProduct({...newProduct, sku: e.target.value.toUpperCase()})} />
+                <input type="text" placeholder="Description" className="border p-2 rounded-lg" value={newProduct.description} onChange={(e) => setNewProduct({...newProduct, description: e.target.value})} />
+                <input type="number" placeholder="Quantity" className="border p-2 rounded-lg" value={newProduct.quantity} onChange={(e) => setNewProduct({...newProduct, quantity: e.target.value})} />
+                <input type="text" placeholder="Bin Location" className="border p-2 rounded-lg" value={newProduct.bin} onChange={(e) => setNewProduct({...newProduct, bin: e.target.value.toUpperCase()})} />
+                <button onClick={addProduct} disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2">{saving ? 'Adding...' : '➕ Add Product'}</button>
+              </div>
+            </div>
+
+            <h3 className="font-semibold mb-3 text-lg">Current Stock</h3>
+            {stock.map((item, index) => (
+              <div key={index} className="border rounded-lg p-3 mb-2 flex justify-between items-center">
+                <div>
+                  <p className="font-semibold">{item.description} ({item.sku})</p>
+                  <p className="text-sm text-gray-600">Quantity: {item.quantity} | Bin: {item.bin}</p>
+                </div>
+                <button onClick={() => deleteProduct(item.id, item.sku)} className="text-red-500 hover:text-red-700">🗑️</button>
+              </div>
+            ))}
+            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No items yet. Add your first product!</p>}
+          </div>
+        )}
+
+        {activeTab === 'bins' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">🗑️ Bin Management</h2>
+            
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3 text-lg">Add New Bin</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input type="text" placeholder="Bin ID" className="border p-2 rounded-lg" value={newBin.bin_id} onChange={(e) => setNewBin({...newBin, bin_id: e.target.value.toUpperCase()})} />
+                <input type="text" placeholder="Zone" className="border p-2 rounded-lg" value={newBin.zone} onChange={(e) => setNewBin({...newBin, zone: e.target.value})} />
+                <button onClick={addBin} disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2">{saving ? 'Adding...' : '➕ Add Bin'}</button>
+              </div>
+            </div>
+
+            <h3 className="font-semibold mb-3 text-lg">Current Bins</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {bins.map((bin, index) => (
+                <div key={index} className="border rounded-lg p-3">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="font-semibold text-lg">{bin.bin_id}</p>
+                      <p className="text-sm text-gray-600">Zone: {bin.zone}</p>
+                      <p className="text-sm text-gray-600">Status: {bin.status}</p>
+                    </div>
+                    <button onClick={() => deleteBin(bin.id, bin.bin_id)} className="text-red-500 hover:text-red-700">🗑️</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin!</p>}
+          </div>
+        )}
+
         {activeTab === 'orders' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">📝 Order Management</h2>
@@ -229,27 +388,9 @@ function App() {
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">Create New Order</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input 
-                  type="text" 
-                  placeholder="Order ID" 
-                  className="border p-2 rounded-lg" 
-                  value={newOrder.order_id} 
-                  onChange={(e) => setNewOrder({...newOrder, order_id: e.target.value.toUpperCase()})} 
-                />
-                <input 
-                  type="text" 
-                  placeholder="Customer Name" 
-                  className="border p-2 rounded-lg" 
-                  value={newOrder.customer} 
-                  onChange={(e) => setNewOrder({...newOrder, customer: e.target.value})} 
-                />
-                <button 
-                  onClick={addOrder} 
-                  disabled={saving}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2"
-                >
-                  {saving ? 'Creating...' : '➕ Create Order'}
-                </button>
+                <input type="text" placeholder="Order ID" className="border p-2 rounded-lg" value={newOrder.order_id} onChange={(e) => setNewOrder({...newOrder, order_id: e.target.value.toUpperCase()})} />
+                <input type="text" placeholder="Customer Name" className="border p-2 rounded-lg" value={newOrder.customer} onChange={(e) => setNewOrder({...newOrder, customer: e.target.value})} />
+                <button onClick={addOrder} disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2">{saving ? 'Creating...' : '➕ Create Order'}</button>
               </div>
             </div>
 
@@ -261,14 +402,10 @@ function App() {
                     <p className="font-semibold text-lg">{order.order_id}</p>
                     <p className="text-sm text-gray-600">Customer: {order.customer}</p>
                     {order.created_at && (
-                      <p className="text-xs text-gray-400">
-                        Created: {new Date(order.created_at).toLocaleDateString()}
-                      </p>
+                      <p className="text-xs text-gray-400">Created: {new Date(order.created_at).toLocaleDateString()}</p>
                     )}
                     {!order.id && (
-                      <p className="text-xs text-red-500 mt-1">
-                        ⚠️ Cannot update - please recreate this order
-                      </p>
+                      <p className="text-xs text-red-500 mt-1">⚠️ Cannot update - please recreate this order</p>
                     )}
                   </div>
                   <div className="flex gap-2">
@@ -307,72 +444,12 @@ function App() {
                         )}
                       </div>
                     )}
-                    <button 
-                      onClick={() => deleteOrder(order.order_id, order.id)} 
-                      className="text-red-500 hover:text-red-700 text-sm px-2"
-                    >
-                      🗑️
-                    </button>
+                    <button onClick={() => deleteOrder(order.order_id, order.id)} className="text-red-500 hover:text-red-700">🗑️</button>
                   </div>
                 </div>
               </div>
             ))}
-            {orders.length === 0 && (
-              <p className="text-gray-500 text-center py-8">No orders yet. Create your first order!</p>
-            )}
-          </div>
-        )}
-
-        {/* Keep other tabs (dashboard, stock, bins) the same */}
-        {activeTab === 'dashboard' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold mb-4">Dashboard</h2>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-blue-100 rounded-lg">
-                <p className="text-lg font-semibold">Stock Items</p>
-                <p className="text-3xl">{stock.length}</p>
-              </div>
-              <div className="p-4 bg-green-100 rounded-lg">
-                <p className="text-lg font-semibold">Bins</p>
-                <p className="text-3xl">{bins.length}</p>
-              </div>
-              <div className="p-4 bg-yellow-100 rounded-lg">
-                <p className="text-lg font-semibold">Orders</p>
-                <p className="text-3xl">{orders.length}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'stock' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold mb-4">Stock Management</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <input type="text" placeholder="SKU" className="border p-2 rounded" value={newProduct.sku} onChange={(e) => setNewProduct({...newProduct, sku: e.target.value.toUpperCase()})} />
-              <input type="text" placeholder="Description" className="border p-2 rounded" value={newProduct.description} onChange={(e) => setNewProduct({...newProduct, description: e.target.value})} />
-              <input type="number" placeholder="Quantity" className="border p-2 rounded" value={newProduct.quantity} onChange={(e) => setNewProduct({...newProduct, quantity: e.target.value})} />
-              <input type="text" placeholder="Bin" className="border p-2 rounded" value={newProduct.bin} onChange={(e) => setNewProduct({...newProduct, bin: e.target.value.toUpperCase()})} />
-              <button onClick={addProduct} className="bg-blue-600 text-white px-4 py-2 rounded md:col-span-2">Add Product</button>
-            </div>
-            <div className="mt-4">
-              {stock.map((item, i) => (
-                <div key={i} className="border-b py-2">{item.sku} - {item.description} ({item.quantity})</div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {activeTab === 'bins' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-2xl font-bold mb-4">Bin Management</h2>
-            <div className="flex gap-2 mb-4">
-              <input type="text" placeholder="Bin ID" className="border p-2 rounded flex-1" value={newBin.bin_id} onChange={(e) => setNewBin({...newBin, bin_id: e.target.value.toUpperCase()})} />
-              <input type="text" placeholder="Zone" className="border p-2 rounded flex-1" value={newBin.zone} onChange={(e) => setNewBin({...newBin, zone: e.target.value})} />
-              <button onClick={addBin} className="bg-blue-600 text-white px-4 py-2 rounded">Add Bin</button>
-            </div>
-            {bins.map((bin, i) => (
-              <div key={i} className="border p-2 mb-2 rounded">{bin.bin_id} - {bin.zone}</div>
-            ))}
+            {orders.length === 0 && <p className="text-gray-500 text-center py-8">No orders yet. Create your first order!</p>}
           </div>
         )}
       </div>
