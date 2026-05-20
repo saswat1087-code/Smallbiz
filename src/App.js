@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Your Google Apps Script Web App URL
-const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbyUZOoMz34aHENVEEJzfbPLnwojUN6VztFykfZj0mvpVsmo5lVB4xfljRTxcWPvB6P6/exec';
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwlnNqnu5gV4ggqg0ZyWcgtECWGoZzbYCcjBky9_W8YBxJN0tqBiJlbTvfd8EebFE4U/exec';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
