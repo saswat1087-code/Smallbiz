@@ -1,326 +1,471 @@
-import React, { useMemo, useState } from "react";
+import React, { useState, useEffect } from 'react';
 
-// Simple inline components (no external dependencies needed)
-const Card = ({ children, className }) => (
-  <div className={`bg-white rounded-2xl shadow ${className || ''}`}>{children}</div>
-);
+// Your Google Apps Script Web App URL
+const GOOGLE_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxbWQgE4X3TbKMfi_txX9NKVT54rFUbXkSJgYRDlRxN6Yf28MZw-rukn0xMqIJat6bg/exec';
 
-const CardContent = ({ children, className }) => (
-  <div className={`p-5 ${className || ''}`}>{children}</div>
-);
+function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [stock, setStock] = useState([]);
+  const [bins, setBins] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  
+  // Form states
+  const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
+  const [newBin, setNewBin] = useState({ bin_id: '', zone: '' });
+  const [newOrder, setNewOrder] = useState({ order_id: '', customer: '' });
 
-const Button = ({ children, onClick, variant, className }) => (
-  <button 
-    onClick={onClick} 
-    className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
-      variant === 'default' 
-        ? 'bg-blue-600 text-white hover:bg-blue-700' 
-        : 'border border-gray-300 bg-white hover:bg-gray-50'
-    } ${className || ''}`}
-  >
-    {children}
-  </button>
-);
+  // Load data when app starts
+  useEffect(() => {
+    loadData();
+  }, []);
 
-const Input = ({ placeholder, value, onChange, type }) => (
-  <input 
-    type={type || 'text'} 
-    placeholder={placeholder} 
-    value={value} 
-    onChange={onChange} 
-    className="w-full border rounded-xl p-2 text-sm" 
-  />
-);
+  // Clear message after 3 seconds
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(''), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
 
-// Icons as simple emoji (since lucide-react isn't installed)
-const Package = () => <span className="text-2xl">📦</span>;
-const Truck = () => <span className="text-2xl">🚚</span>;
-const Warehouse = () => <span className="text-2xl">🏭</span>;
-const Users = () => <span className="text-2xl">👥</span>;
-const Boxes = () => <span className="text-2xl">📋</span>;
-const ClipboardList = () => <span className="text-2xl">📝</span>;
-
-export default function SmallBusinessWMS() {
-  const [role, setRole] = useState("Warehouse Manager");
-  const [movements, setMovements] = useState([
-    { id: "MV001", action: "GR Posted", ref: "PO1001" },
-    { id: "MV002", action: "Stock Transfer", ref: "WH01→WH02" },
-    { id: "MV003", action: "Pick Confirmed", ref: "DO2045" },
-  ]);
-  const [masters] = useState({ suppliers: 12, customers: 28, products: 145 });
-  const [orders, setOrders] = useState([{ id: "DO1001", customer: "ABC Retail", status: "Open" }]);
-  const [barcodeInput, setBarcodeInput] = useState("");
-  const [search, setSearch] = useState("");
-  const [tasks] = useState([
-    { id: "WT001", type: "Putaway", priority: "High", status: "Open" },
-    { id: "WT002", type: "Picking", priority: "Medium", status: "In Progress" },
-  ]);
-  const [yard] = useState([
-    { truck: "TRK-101", dock: "D1", status: "Arrived" },
-    { truck: "TRK-205", dock: "D2", status: "Loading" },
-  ]);
-  const [active, setActive] = useState("cockpit");
-  const [bins, setBins] = useState([
-    { id: "A-01-01", zone: "Inbound", type: "Rack", capacity: 100, status: "Occupied" },
-    { id: "B-02-03", zone: "Bulk", type: "Floor", capacity: 200, status: "Empty" },
-  ]);
-  const [newBin, setNewBin] = useState({ id: "", zone: "", type: "Rack", capacity: "" });
-
-  const stock = [
-    { sku: "MAT001", product: "Bolts", qty: 320, bin: "A-01-01" },
-    { sku: "MAT002", product: "Boxes", qty: 120, bin: "B-02-03" },
-  ];
-
-  const kpis = useMemo(() => [
-    { label: "Stock On Hand", value: 440, icon: Package },
-    { label: "Pending GR", value: 8, icon: ClipboardList },
-    { label: "Open Putaway", value: 5, icon: Warehouse },
-    { label: "Yard Loads", value: 3, icon: Truck },
-    { label: "Resources", value: 11, icon: Users },
-    { label: "Bins", value: bins.length, icon: Boxes },
-  ], [bins]);
-
-  const addBin = () => {
-    if (!newBin.id || !newBin.zone || !newBin.capacity) return;
-    setBins([...bins, { ...newBin, capacity: Number(newBin.capacity), status: "Empty" }]);
-    setNewBin({ id: "", zone: "", type: "Rack", capacity: "" });
-  };
-
-  const addMovement = (action, ref) => {
-    const newMovement = {
-      id: `MV${String(movements.length + 1).padStart(3, '0')}`,
-      action,
-      ref
-    };
-    setMovements([newMovement, ...movements]);
-  };
-
-  const nav = [
-    ["cockpit", "📊 Dashboard"],
-    ["stock", "📦 Stock"],
-    ["bins", "🗑️ Bins"],
-    ["gr", "📥 Goods Receipt"],
-    ["removal", "📤 Stock Removal"],
-    ["yard", "🚛 Yard"],
-    ["history", "📜 History"],
-    ["crud", "📝 Orders"],
-    ["master", "📋 Master Data"],
-    ["barcode", "🔳 Barcode"],
-    ["api", "🔌 API Status"],
-  ];
-
-  const renderContent = () => {
-    switch(active) {
-      case 'cockpit':
-        return (
-          <>
-            <h2 className="text-2xl font-semibold mb-4">Warehouse Dashboard</h2>
-            <div className="grid md:grid-cols-2 gap-4 mb-6">
-              <Input placeholder="Search SKU / Task / Bin" value={search} onChange={(e)=>setSearch(e.target.value)} />
-              <div className="p-3 bg-blue-50 rounded-xl text-sm">✅ Wave Picking: Enabled</div>
-            </div>
-            <div className="grid md:grid-cols-3 gap-4">
-              {kpis.map((k) => {
-                const Icon = k.icon;
-                return (
-                  <Card key={k.label}>
-                    <CardContent className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-slate-500">{k.label}</p>
-                        <p className="text-2xl font-bold">{k.value}</p>
-                      </div>
-                      <Icon />
-                    </CardContent>
-                  </Card>
-                );
-              })}
-            </div>
-          </>
-        );
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(GOOGLE_SCRIPT_URL);
+      const data = await response.json();
       
-      case 'stock':
-        return (
-          <Card>
-            <CardContent>
-              <h2 className="text-xl font-semibold mb-4">📦 Stock Overview</h2>
-              {stock.map((s) => (
-                <div key={s.sku} className="p-3 border rounded-xl mb-2 flex justify-between">
-                  <span><strong>{s.product}</strong> ({s.sku})</span>
-                  <span>{s.qty} units | Bin {s.bin}</span>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        );
-      
-      case 'bins':
-        return (
-          <div className="grid md:grid-cols-2 gap-6">
-            <Card>
-              <CardContent>
-                <h2 className="text-xl font-semibold mb-4">➕ Create New Bin</h2>
-                <Input placeholder="Bin ID (e.g., C-03-01)" value={newBin.id} onChange={(e) => setNewBin({ ...newBin, id: e.target.value })} />
-                <Input placeholder="Zone" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} className="mt-2" />
-                <Input placeholder="Capacity" type="number" value={newBin.capacity} onChange={(e) => setNewBin({ ...newBin, capacity: e.target.value })} className="mt-2" />
-                <Button onClick={addBin} className="mt-4 w-full">Create Bin</Button>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent>
-                <h2 className="text-xl font-semibold mb-4">🗑️ Bin List</h2>
-                {bins.map((b) => (
-                  <div key={b.id} className="border rounded-xl p-3 mb-2">
-                    <div className="font-bold">{b.id}</div>
-                    <div className="text-sm text-gray-600">Zone: {b.zone} | Status: {b.status}</div>
-                    <div className="text-sm text-gray-600">Capacity: {b.capacity} units</div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </div>
-        );
-      
-      case 'history':
-        return (
-          <Card>
-            <CardContent>
-              <h2 className="text-xl font-semibold mb-4">📜 Movement History</h2>
-              <button 
-                onClick={() => addMovement('Test Movement', 'Manual')}
-                className="mb-4 px-4 py-2 bg-green-600 text-white rounded-lg text-sm"
-              >
-                + Add Test Movement
-              </button>
-              {movements.map((m) => (
-                <div key={m.id} className="border rounded-xl p-3 mb-2">
-                  <span className="font-mono">{m.id}</span> | {m.action} | {m.ref}
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        );
-      
-      case 'crud':
-        return (
-          <Card>
-            <CardContent>
-              <h2 className="text-xl font-semibold mb-4">📝 Delivery Orders</h2>
-              <Button onClick={() => setOrders([...orders, { id: `DO${Date.now()}`, customer: 'New Customer', status: 'Open' }])}>
-                + Create New Order
-              </Button>
-              <div className="mt-4 space-y-2">
-                {orders.map((o) => (
-                  <div key={o.id} className="border rounded-xl p-3 flex justify-between">
-                    <span><strong>{o.id}</strong> | {o.customer}</span>
-                    <span className="px-2 py-1 bg-green-100 rounded">{o.status}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        );
-      
-      case 'master':
-        return (
-          <Card>
-            <CardContent>
-              <h2 className="text-xl font-semibold mb-4">📋 Master Data</h2>
-              <div className="space-y-2">
-                <p>📦 Suppliers: {masters.suppliers}</p>
-                <p>👥 Customers: {masters.customers}</p>
-                <p>🏷️ Products: {masters.products}</p>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      
-      case 'barcode':
-        return (
-          <Card>
-            <CardContent>
-              <h2 className="text-xl font-semibold mb-4">🔳 Barcode Scanner Ready</h2>
-              <Input placeholder="Scan or enter SKU/Bin ID" value={barcodeInput} onChange={(e) => setBarcodeInput(e.target.value)} />
-              {barcodeInput && (
-                <div className="mt-4 p-4 bg-gray-100 rounded-xl text-center">
-                  <p className="font-mono text-lg">{barcodeInput}</p>
-                  <p className="text-sm text-gray-600 mt-2">✓ Scanned successfully</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        );
-      
-      case 'api':
-        return (
-          <Card>
-            <CardContent>
-              <h2 className="text-xl font-semibold mb-4">🔌 API Endpoints Ready</h2>
-              <div className="space-y-2">
-                <div className="border rounded-lg p-2 text-sm font-mono">GET /api/stock</div>
-                <div className="border rounded-lg p-2 text-sm font-mono">POST /api/gr</div>
-                <div className="border rounded-lg p-2 text-sm font-mono">POST /api/putaway</div>
-                <div className="border rounded-lg p-2 text-sm font-mono">POST /api/delivery</div>
-                <div className="border rounded-lg p-2 text-sm font-mono">GET /api/reports</div>
-              </div>
-              <p className="text-sm text-slate-500 mt-4">✅ Ready for backend integration</p>
-            </CardContent>
-          </Card>
-        );
-      
-      default:
-        return (
-          <Card>
-            <CardContent>
-              <h2 className="text-xl font-semibold capitalize">{active} Module</h2>
-              <p className="mt-4 text-gray-600">This module is ready for configuration.</p>
-            </CardContent>
-          </Card>
-        );
+      setStock(data.stock || []);
+      setBins(data.bins || []);
+      setOrders(data.orders || []);
+    } catch (error) {
+      console.error('Error loading data:', error);
+      setMessage('❌ Failed to load data. Please check:\n1. Apps Script is deployed\n2. Script is authorized\n3. Sheet tabs are named correctly (Stock, Bins, Orders)');
+    } finally {
+      setLoading(false);
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gray-100 p-4">
-      <div className="flex flex-col md:flex-row gap-6 max-w-7xl mx-auto">
-        {/* Sidebar */}
-        <aside className="md:w-72 bg-white rounded-2xl shadow p-4">
-          <div className="text-center mb-4">
-            <h1 className="text-2xl font-bold text-blue-600">SmallBiz WMS</h1>
-            <p className="text-xs text-gray-500">Warehouse Management System</p>
-          </div>
-          
-          <div className="mb-4">
-            <label className="text-xs text-gray-500 block mb-1">User Role</label>
-            <select 
-              className="w-full border rounded-xl p-2 text-sm" 
-              value={role} 
-              onChange={(e)=>setRole(e.target.value)}
-            >
-              <option>Warehouse Manager</option>
-              <option>Operator</option>
-              <option>Supervisor</option>
-              <option>Admin</option>
-            </select>
-          </div>
-          
-          <div className="space-y-2 max-h-[70vh] overflow-y-auto">
-            {nav.map(([id, label]) => (
-              <Button 
-                key={id} 
-                variant={active === id ? "default" : "outline"} 
-                onClick={() => setActive(id)}
-              >
-                {label}
-              </Button>
-            ))}
-          </div>
-        </aside>
+  const addProduct = async () => {
+    if (!newProduct.sku || !newProduct.description) {
+      setMessage('❌ Please fill in SKU and Description');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          table: 'Stock',
+          sku: newProduct.sku,
+          description: newProduct.description,
+          quantity: parseInt(newProduct.quantity) || 0,
+          bin: newProduct.bin || 'Unassigned'
+        })
+      });
+      
+      setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
+      setMessage('✅ Product added successfully!');
+      loadData();
+    } catch (error) {
+      console.error('Error adding product:', error);
+      setMessage('❌ Failed to add product');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-        {/* Main Content */}
-        <main className="flex-1 space-y-6">
-          {renderContent()}
-        </main>
+  const addBin = async () => {
+    if (!newBin.bin_id) {
+      setMessage('❌ Please enter Bin ID');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          table: 'Bins',
+          bin_id: newBin.bin_id,
+          zone: newBin.zone || 'General',
+          status: 'Available'
+        })
+      });
+      
+      setNewBin({ bin_id: '', zone: '' });
+      setMessage('✅ Bin added successfully!');
+      loadData();
+    } catch (error) {
+      console.error('Error adding bin:', error);
+      setMessage('❌ Failed to add bin');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addOrder = async () => {
+    if (!newOrder.order_id || !newOrder.customer) {
+      setMessage('❌ Please enter Order ID and Customer');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'add',
+          table: 'Orders',
+          order_id: newOrder.order_id,
+          customer: newOrder.customer,
+          status: 'Open',
+          created_at: new Date().toISOString()
+        })
+      });
+      
+      setNewOrder({ order_id: '', customer: '' });
+      setMessage('✅ Order created successfully!');
+      loadData();
+    } catch (error) {
+      console.error('Error adding order:', error);
+      setMessage('❌ Failed to create order');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteProduct = async (sku) => {
+    if (!window.confirm(`Delete product ${sku}?`)) return;
+    
+    setSaving(true);
+    try {
+      await fetch(GOOGLE_SCRIPT_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'delete',
+          table: 'Stock',
+          sku: sku
+        })
+      });
+      
+      setMessage('✅ Product deleted successfully!');
+      loadData();
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      setMessage('❌ Failed to delete product');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-2xl mb-2">📊</div>
+          <div className="text-xl">Loading WMS from Google Sheets...</div>
+          <div className="text-sm text-gray-500 mt-2">Fetching your data</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-100">
+      {/* Header */}
+      <div className="bg-blue-600 text-white p-4 shadow-lg">
+        <h1 className="text-2xl font-bold text-center">SmallBiz WMS</h1>
+        <p className="text-center text-sm mt-1">Powered by Google Sheets 📊</p>
+      </div>
+      
+      {/* Message Alert */}
+      {message && (
+        <div className={`fixed top-20 right-4 z-50 p-3 rounded-lg shadow-lg whitespace-pre-line ${
+          message.includes('✅') ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
+        }`}>
+          {message}
+        </div>
+      )}
+      
+      <div className="container mx-auto p-4 max-w-6xl">
+        {/* Navigation Tabs */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <button 
+            onClick={() => setActiveTab('dashboard')} 
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              activeTab === 'dashboard' 
+                ? 'bg-blue-600 text-white shadow-lg' 
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            📊 Dashboard
+          </button>
+          <button 
+            onClick={() => setActiveTab('stock')} 
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              activeTab === 'stock' 
+                ? 'bg-blue-600 text-white shadow-lg' 
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            📦 Stock
+          </button>
+          <button 
+            onClick={() => setActiveTab('bins')} 
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              activeTab === 'bins' 
+                ? 'bg-blue-600 text-white shadow-lg' 
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            🗑️ Bins
+          </button>
+          <button 
+            onClick={() => setActiveTab('orders')} 
+            className={`px-6 py-3 rounded-lg font-semibold transition-all ${
+              activeTab === 'orders' 
+                ? 'bg-blue-600 text-white shadow-lg' 
+                : 'bg-white text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            📝 Orders
+          </button>
+        </div>
+
+        {/* Dashboard Tab */}
+        {activeTab === 'dashboard' && (
+          <div>
+            <h2 className="text-2xl font-bold mb-6">Dashboard Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg shadow p-6 text-white">
+                <div className="text-4xl mb-2">📦</div>
+                <h3 className="text-sm opacity-90">Total Stock Units</h3>
+                <p className="text-3xl font-bold">{stock.reduce((sum, item) => sum + (parseInt(item.quantity) || 0), 0)}</p>
+              </div>
+              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg shadow p-6 text-white">
+                <div className="text-4xl mb-2">🏷️</div>
+                <h3 className="text-sm opacity-90">Total Products</h3>
+                <p className="text-3xl font-bold">{stock.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg shadow p-6 text-white">
+                <div className="text-4xl mb-2">🗑️</div>
+                <h3 className="text-sm opacity-90">Total Bins</h3>
+                <p className="text-3xl font-bold">{bins.length}</p>
+              </div>
+            </div>
+            
+            {/* Recent Stock */}
+            <div className="mt-8 bg-white rounded-lg shadow p-6">
+              <h3 className="text-xl font-bold mb-4">Recent Stock Items</h3>
+              {stock.slice(0, 5).map((item, index) => (
+                <div key={index} className="border-b py-2">
+                  <p className="font-semibold">{item.description}</p>
+                  <p className="text-sm text-gray-600">SKU: {item.sku} | Qty: {item.quantity} | Bin: {item.bin}</p>
+                </div>
+              ))}
+              {stock.length === 0 && <p className="text-gray-500">No items yet. Add your first product!</p>}
+            </div>
+          </div>
+        )}
+
+        {/* Stock Tab */}
+        {activeTab === 'stock' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">📦 Stock Management</h2>
+            
+            {/* Add Product Form */}
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3 text-lg">Add New Item</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input 
+                  type="text" 
+                  placeholder="SKU (e.g., MAT003)" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newProduct.sku} 
+                  onChange={(e) => setNewProduct({...newProduct, sku: e.target.value.toUpperCase()})} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Description" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newProduct.description} 
+                  onChange={(e) => setNewProduct({...newProduct, description: e.target.value})} 
+                />
+                <input 
+                  type="number" 
+                  placeholder="Quantity" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newProduct.quantity} 
+                  onChange={(e) => setNewProduct({...newProduct, quantity: e.target.value})} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Bin Location" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newProduct.bin} 
+                  onChange={(e) => setNewProduct({...newProduct, bin: e.target.value.toUpperCase()})} 
+                />
+                <button 
+                  onClick={addProduct} 
+                  disabled={saving}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors md:col-span-2 disabled:opacity-50"
+                >
+                  {saving ? 'Adding...' : '➕ Add Product'}
+                </button>
+              </div>
+            </div>
+
+            {/* Stock List */}
+            <h3 className="font-semibold mb-3 text-lg">Current Stock</h3>
+            {stock.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No items yet. Add your first item above!</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {stock.map((item, index) => (
+                  <div key={index} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <p className="font-semibold text-lg">{item.description}</p>
+                        <p className="text-sm text-gray-500">SKU: {item.sku}</p>
+                        <div className="flex gap-4 mt-2">
+                          <p className="text-sm">📦 Quantity: <span className="font-semibold">{item.quantity}</span></p>
+                          <p className="text-sm">📍 Bin: {item.bin}</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => deleteProduct(item.sku)}
+                        disabled={saving}
+                        className="text-red-500 hover:text-red-700 text-sm px-3 py-1 rounded hover:bg-red-50"
+                      >
+                        🗑️ Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Bins Tab */}
+        {activeTab === 'bins' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">🗑️ Bin Management</h2>
+            
+            {/* Add Bin Form */}
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3 text-lg">Add New Bin</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Bin ID (e.g., C-03-01)" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newBin.bin_id} 
+                  onChange={(e) => setNewBin({...newBin, bin_id: e.target.value.toUpperCase()})} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Zone (e.g., Bulk, Inbound, Dispatch)" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newBin.zone} 
+                  onChange={(e) => setNewBin({...newBin, zone: e.target.value})} 
+                />
+                <button 
+                  onClick={addBin} 
+                  disabled={saving}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors md:col-span-2 disabled:opacity-50"
+                >
+                  {saving ? 'Adding...' : '➕ Add Bin'}
+                </button>
+              </div>
+            </div>
+
+            {/* Bin List */}
+            <h3 className="font-semibold mb-3 text-lg">Current Bins</h3>
+            {bins.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin above!</p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {bins.map((bin, index) => (
+                  <div key={index} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <p className="font-semibold text-lg">{bin.bin_id}</p>
+                    <p className="text-sm text-gray-600 mt-1">📍 Zone: {bin.zone}</p>
+                    <p className="text-sm text-gray-600">📊 Status: <span className={`inline-block px-2 py-0.5 rounded text-xs ${bin.status === 'Available' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{bin.status}</span></p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Orders Tab */}
+        {activeTab === 'orders' && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">📝 Order Management</h2>
+            
+            {/* Add Order Form */}
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3 text-lg">Create New Order</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Order ID (e.g., DO1002)" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newOrder.order_id} 
+                  onChange={(e) => setNewOrder({...newOrder, order_id: e.target.value.toUpperCase()})} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Customer Name" 
+                  className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                  value={newOrder.customer} 
+                  onChange={(e) => setNewOrder({...newOrder, customer: e.target.value})} 
+                />
+                <button 
+                  onClick={addOrder} 
+                  disabled={saving}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors md:col-span-2 disabled:opacity-50"
+                >
+                  {saving ? 'Creating...' : '➕ Create Order'}
+                </button>
+              </div>
+            </div>
+
+            {/* Orders List */}
+            <h3 className="font-semibold mb-3 text-lg">Current Orders</h3>
+            {orders.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">No orders yet. Create your first order above!</p>
+            ) : (
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {orders.map((order, index) => (
+                  <div key={index} className="border rounded-lg p-4 hover:shadow-md transition-shadow">
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <p className="font-semibold text-lg">{order.order_id}</p>
+                        <p className="text-sm text-gray-600">👤 Customer: {order.customer}</p>
+                        <p className="text-sm text-gray-600">📊 Status: <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">{order.status}</span></p>
+                        {order.created_at && <p className="text-xs text-gray-400 mt-1">Created: {new Date(order.created_at).toLocaleDateString()}</p>}
+                      </div>
+                      <div className="text-2xl">📋</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
-    }
+}
+
+export default App;
