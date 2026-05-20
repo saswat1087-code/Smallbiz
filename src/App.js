@@ -33,7 +33,8 @@ function App() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(GOOGLE_SCRIPT_URL);
+      // Use GET request with callback for JSONP
+      const response = await fetch(`${GOOGLE_SCRIPT_URL}?action=get`);
       const data = await response.json();
       
       setStock(data.stock || []);
@@ -41,7 +42,7 @@ function App() {
       setOrders(data.orders || []);
     } catch (error) {
       console.error('Error loading data:', error);
-      setMessage('❌ Failed to load data. Please check:\n1. Apps Script is deployed\n2. Script is authorized\n3. Sheet tabs are named correctly (Stock, Bins, Orders)');
+      setMessage('❌ Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -55,22 +56,13 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add',
-          table: 'Stock',
-          sku: newProduct.sku,
-          description: newProduct.description,
-          quantity: parseInt(newProduct.quantity) || 0,
-          bin: newProduct.bin || 'Unassigned'
-        })
-      });
+      // Use GET request with parameters
+      const url = `${GOOGLE_SCRIPT_URL}?action=add&table=Stock&sku=${encodeURIComponent(newProduct.sku)}&description=${encodeURIComponent(newProduct.description)}&quantity=${newProduct.quantity}&bin=${encodeURIComponent(newProduct.bin || 'Unassigned')}`;
+      await fetch(url);
       
       setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
       setMessage('✅ Product added successfully!');
-      loadData();
+      await loadData();
     } catch (error) {
       console.error('Error adding product:', error);
       setMessage('❌ Failed to add product');
@@ -87,21 +79,12 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add',
-          table: 'Bins',
-          bin_id: newBin.bin_id,
-          zone: newBin.zone || 'General',
-          status: 'Available'
-        })
-      });
+      const url = `${GOOGLE_SCRIPT_URL}?action=add&table=Bins&bin_id=${encodeURIComponent(newBin.bin_id)}&zone=${encodeURIComponent(newBin.zone || 'General')}&status=Available`;
+      await fetch(url);
       
       setNewBin({ bin_id: '', zone: '' });
       setMessage('✅ Bin added successfully!');
-      loadData();
+      await loadData();
     } catch (error) {
       console.error('Error adding bin:', error);
       setMessage('❌ Failed to add bin');
@@ -118,22 +101,12 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'add',
-          table: 'Orders',
-          order_id: newOrder.order_id,
-          customer: newOrder.customer,
-          status: 'Open',
-          created_at: new Date().toISOString()
-        })
-      });
+      const url = `${GOOGLE_SCRIPT_URL}?action=add&table=Orders&order_id=${encodeURIComponent(newOrder.order_id)}&customer=${encodeURIComponent(newOrder.customer)}&status=Open`;
+      await fetch(url);
       
       setNewOrder({ order_id: '', customer: '' });
       setMessage('✅ Order created successfully!');
-      loadData();
+      await loadData();
     } catch (error) {
       console.error('Error adding order:', error);
       setMessage('❌ Failed to create order');
@@ -147,18 +120,11 @@ function App() {
     
     setSaving(true);
     try {
-      await fetch(GOOGLE_SCRIPT_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'delete',
-          table: 'Stock',
-          sku: sku
-        })
-      });
+      const url = `${GOOGLE_SCRIPT_URL}?action=delete&table=Stock&sku=${encodeURIComponent(sku)}`;
+      await fetch(url);
       
       setMessage('✅ Product deleted successfully!');
-      loadData();
+      await loadData();
     } catch (error) {
       console.error('Error deleting product:', error);
       setMessage('❌ Failed to delete product');
@@ -173,7 +139,6 @@ function App() {
         <div className="text-center">
           <div className="text-2xl mb-2">📊</div>
           <div className="text-xl">Loading WMS from Google Sheets...</div>
-          <div className="text-sm text-gray-500 mt-2">Fetching your data</div>
         </div>
       </div>
     );
@@ -189,7 +154,7 @@ function App() {
       
       {/* Message Alert */}
       {message && (
-        <div className={`fixed top-20 right-4 z-50 p-3 rounded-lg shadow-lg whitespace-pre-line ${
+        <div className={`fixed top-20 right-4 z-50 p-3 rounded-lg shadow-lg ${
           message.includes('✅') ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
         }`}>
           {message}
@@ -263,7 +228,6 @@ function App() {
               </div>
             </div>
             
-            {/* Recent Stock */}
             <div className="mt-8 bg-white rounded-lg shadow p-6">
               <h3 className="text-xl font-bold mb-4">Recent Stock Items</h3>
               {stock.slice(0, 5).map((item, index) => (
@@ -282,7 +246,6 @@ function App() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">📦 Stock Management</h2>
             
-            {/* Add Product Form */}
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">Add New Item</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -324,7 +287,6 @@ function App() {
               </div>
             </div>
 
-            {/* Stock List */}
             <h3 className="font-semibold mb-3 text-lg">Current Stock</h3>
             {stock.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No items yet. Add your first item above!</p>
@@ -361,7 +323,6 @@ function App() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">🗑️ Bin Management</h2>
             
-            {/* Add Bin Form */}
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">Add New Bin</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -389,7 +350,6 @@ function App() {
               </div>
             </div>
 
-            {/* Bin List */}
             <h3 className="font-semibold mb-3 text-lg">Current Bins</h3>
             {bins.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin above!</p>
@@ -412,7 +372,6 @@ function App() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">📝 Order Management</h2>
             
-            {/* Add Order Form */}
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">Create New Order</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -440,7 +399,6 @@ function App() {
               </div>
             </div>
 
-            {/* Orders List */}
             <h3 className="font-semibold mb-3 text-lg">Current Orders</h3>
             {orders.length === 0 ? (
               <p className="text-gray-500 text-center py-8">No orders yet. Create your first order above!</p>
@@ -453,7 +411,6 @@ function App() {
                         <p className="font-semibold text-lg">{order.order_id}</p>
                         <p className="text-sm text-gray-600">👤 Customer: {order.customer}</p>
                         <p className="text-sm text-gray-600">📊 Status: <span className="inline-block px-2 py-0.5 rounded text-xs bg-green-100 text-green-800">{order.status}</span></p>
-                        {order.created_at && <p className="text-xs text-gray-400 mt-1">Created: {new Date(order.created_at).toLocaleDateString()}</p>}
                       </div>
                       <div className="text-2xl">📋</div>
                     </div>
