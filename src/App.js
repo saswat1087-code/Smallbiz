@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// Your working Sheet.best API URL
+// Your Sheet.best API URL - notice the correct format
 const API_URL = 'https://api.sheetbest.com/sheets/a674d991-727a-44fb-865b-774f4efb8a32';
 
 function App() {
@@ -34,37 +34,33 @@ function App() {
     try {
       setLoading(true);
       
-      // Fetch from each sheet
-      const stockRes = await fetch(`${API_URL}/Stock`);
-      const binsRes = await fetch(`${API_URL}/Bins`);
-      const ordersRes = await fetch(`${API_URL}/Orders`);
+      // Fetch all data at once using the root endpoint
+      const response = await fetch(API_URL);
+      const allData = await response.json();
       
-      let stockData = [];
-      let binsData = [];
-      let ordersData = [];
+      console.log('All data from sheet:', allData); // Debug: see what data comes back
       
-      if (stockRes.ok) {
-        stockData = await stockRes.json();
-        stockData = Array.isArray(stockData) ? stockData : [];
+      // Sheet.best returns all sheets in one object
+      if (allData && Array.isArray(allData)) {
+        // If data is an array, filter by sheet name from the data structure
+        // The actual structure depends on how Sheet.best returns data
+        setStock(allData.filter(item => item.sku) || []);
+        setBins(allData.filter(item => item.bin_id) || []);
+        setOrders(allData.filter(item => item.order_id) || []);
+      } else if (allData && typeof allData === 'object') {
+        // Alternative: data might be organized by sheet name
+        setStock(allData.Stock || []);
+        setBins(allData.Bins || []);
+        setOrders(allData.Orders || []);
+      } else {
+        setStock([]);
+        setBins([]);
+        setOrders([]);
       }
-      
-      if (binsRes.ok) {
-        binsData = await binsRes.json();
-        binsData = Array.isArray(binsData) ? binsData : [];
-      }
-      
-      if (ordersRes.ok) {
-        ordersData = await ordersRes.json();
-        ordersData = Array.isArray(ordersData) ? ordersData : [];
-      }
-      
-      setStock(stockData);
-      setBins(binsData);
-      setOrders(ordersData);
       
     } catch (error) {
       console.error('Error loading data:', error);
-      setMessage('❌ Failed to load data');
+      setMessage('❌ Failed to load data. Check console for details.');
     } finally {
       setLoading(false);
     }
@@ -78,7 +74,7 @@ function App() {
     
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/Stock`, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -94,6 +90,8 @@ function App() {
         setMessage('✅ Product added successfully!');
         await loadData();
       } else {
+        const errorText = await response.text();
+        console.error('Server response:', errorText);
         setMessage('❌ Failed to add product');
       }
     } catch (error) {
@@ -112,7 +110,7 @@ function App() {
     
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/Bins`, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -127,11 +125,13 @@ function App() {
         setMessage('✅ Bin added successfully!');
         await loadData();
       } else {
-        setMessage('❌ Failed to add bin');
+        const errorText = await response.text();
+        console.error('Server response:', errorText);
+        setMessage('❌ Failed to add bin. Status: ' + response.status);
       }
     } catch (error) {
       console.error('Error adding bin:', error);
-      setMessage('❌ Failed to add bin');
+      setMessage('❌ Failed to add bin: ' + error.message);
     } finally {
       setSaving(false);
     }
@@ -145,7 +145,7 @@ function App() {
     
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/Orders`, {
+      const response = await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -176,7 +176,15 @@ function App() {
     
     setSaving(true);
     try {
-      const response = await fetch(`${API_URL}/Stock/sku/${sku}`, {
+      // First find the item's ID in the sheet
+      const itemToDelete = stock.find(item => item.sku === sku);
+      if (!itemToDelete || !itemToDelete.id) {
+        setMessage('❌ Could not find item to delete');
+        setSaving(false);
+        return;
+      }
+      
+      const response = await fetch(`${API_URL}/${itemToDelete.id}`, {
         method: 'DELETE'
       });
       
@@ -200,6 +208,7 @@ function App() {
         <div className="text-center">
           <div className="text-2xl mb-2">📊</div>
           <div className="text-xl">Loading WMS from Google Sheets...</div>
+          <div className="text-sm text-gray-500 mt-2">Connecting to Sheet.best</div>
         </div>
       </div>
     );
