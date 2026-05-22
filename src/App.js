@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AttachmentUploader from './components/AttachmentUploader';
 
 // Your Sheet.best API URL
 const API_URL = 'https://api.sheetbest.com/sheets/a674d991-727a-44fb-865b-774f4efb8a32';
@@ -12,6 +13,7 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [showStatusMenu, setShowStatusMenu] = useState(null);
+  const [attachingToOrder, setAttachingToOrder] = useState(null);
 
   const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
   const [newBin, setNewBin] = useState({ bin_id: '', zone: '' });
@@ -78,12 +80,9 @@ function App() {
         setMessage('✅ Product added successfully!');
         await loadData();
       } else {
-        const error = await response.text();
-        console.error('Add product error:', error);
         setMessage('❌ Failed to add product');
       }
     } catch (error) {
-      console.error('Error:', error);
       setMessage('❌ Failed to add product');
     } finally {
       setSaving(false);
@@ -146,12 +145,9 @@ function App() {
         setMessage('✅ Order created successfully!');
         await loadData();
       } else {
-        const error = await response.text();
-        console.error('Add order error:', error);
         setMessage('❌ Failed to create order');
       }
     } catch (error) {
-      console.error('Error:', error);
       setMessage('❌ Failed to create order');
     } finally {
       setSaving(false);
@@ -192,6 +188,46 @@ function App() {
       setMessage('❌ Failed to update order');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const addAttachmentToOrder = async (orderId, attachmentUrl, fileName) => {
+    const orderToUpdate = orders.find(order => order.order_id === orderId);
+    
+    if (!orderToUpdate || !orderToUpdate.id) {
+      setMessage('❌ Cannot update order attachment');
+      return;
+    }
+    
+    setSaving(true);
+    try {
+      const updateData = {
+        order_id: orderToUpdate.order_id,
+        customer: orderToUpdate.customer,
+        status: orderToUpdate.status || 'Open',
+        created_at: orderToUpdate.created_at || new Date().toISOString(),
+        attachment_url: attachmentUrl,
+        attachment_name: fileName
+      };
+      
+      const response = await fetch(`${API_URL}/${orderToUpdate.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updateData)
+      });
+      
+      if (response.ok) {
+        setMessage(`✅ Attachment added to order ${orderId}`);
+        await loadData();
+      } else {
+        setMessage('❌ Failed to add attachment');
+      }
+    } catch (error) {
+      console.error('Error adding attachment:', error);
+      setMessage('❌ Failed to add attachment');
+    } finally {
+      setSaving(false);
+      setAttachingToOrder(null);
     }
   };
 
@@ -348,6 +384,7 @@ function App() {
                 <button onClick={() => deleteProduct(item.id, item.sku)} className="text-red-500 hover:text-red-700">🗑️</button>
               </div>
             ))}
+            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No items yet. Add your first product!</p>}
           </div>
         )}
 
@@ -379,6 +416,7 @@ function App() {
                 </div>
               ))}
             </div>
+            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin!</p>}
           </div>
         )}
 
@@ -389,9 +427,27 @@ function App() {
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">Create New Order</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <input type="text" placeholder="Order ID" className="border p-2 rounded-lg" value={newOrder.order_id} onChange={(e) => setNewOrder({...newOrder, order_id: e.target.value.toUpperCase()})} />
-                <input type="text" placeholder="Customer Name" className="border p-2 rounded-lg" value={newOrder.customer} onChange={(e) => setNewOrder({...newOrder, customer: e.target.value})} />
-                <button onClick={addOrder} disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2">{saving ? 'Creating...' : '➕ Create Order'}</button>
+                <input 
+                  type="text" 
+                  placeholder="Order ID" 
+                  className="border p-2 rounded-lg" 
+                  value={newOrder.order_id} 
+                  onChange={(e) => setNewOrder({...newOrder, order_id: e.target.value.toUpperCase()})} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Customer Name" 
+                  className="border p-2 rounded-lg" 
+                  value={newOrder.customer} 
+                  onChange={(e) => setNewOrder({...newOrder, customer: e.target.value})} 
+                />
+                <button 
+                  onClick={addOrder} 
+                  disabled={saving}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2"
+                >
+                  {saving ? 'Creating...' : '➕ Create Order'}
+                </button>
               </div>
             </div>
 
@@ -399,11 +455,25 @@ function App() {
             {orders.map((order, index) => (
               <div key={index} className="border rounded-lg p-4 mb-3">
                 <div className="flex justify-between items-start">
-                  <div>
+                  <div className="flex-1">
                     <p className="font-semibold text-lg">{order.order_id}</p>
                     <p className="text-sm text-gray-600">Customer: {order.customer}</p>
                     {order.created_at && (
-                      <p className="text-xs text-gray-400">Created: {new Date(order.created_at).toLocaleDateString()}</p>
+                      <p className="text-xs text-gray-400">
+                        Created: {new Date(order.created_at).toLocaleDateString()}
+                      </p>
+                    )}
+                    {order.attachment_url && (
+                      <div className="mt-2">
+                        <a 
+                          href={order.attachment_url} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                        >
+                          📎 View Attachment: {order.attachment_name || 'File'}
+                        </a>
+                      </div>
                     )}
                     {!order.id && (
                       <p className="text-xs text-red-500 mt-1">⚠️ Delete & recreate to enable updates</p>
@@ -445,9 +515,37 @@ function App() {
                         )}
                       </div>
                     )}
+                    
+                    {order.id && attachingToOrder !== order.order_id && !order.attachment_url && (
+                      <button 
+                        onClick={() => setAttachingToOrder(order.order_id)}
+                        className="text-gray-500 hover:text-blue-600 text-sm px-2"
+                        title="Add attachment"
+                      >
+                        📎
+                      </button>
+                    )}
+                    
                     <button onClick={() => deleteOrder(order.order_id, order.id)} className="text-red-500 hover:text-red-700">🗑️</button>
                   </div>
                 </div>
+                
+                {attachingToOrder === order.order_id && (
+                  <div className="mt-3 pt-3 border-t">
+                    <AttachmentUploader 
+                      onUploadComplete={(url, fileName) => {
+                        addAttachmentToOrder(order.order_id, url, fileName);
+                      }}
+                      buttonText="Upload File"
+                    />
+                    <button 
+                      onClick={() => setAttachingToOrder(null)}
+                      className="text-xs text-gray-500 mt-2 hover:text-gray-700"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
             {orders.length === 0 && <p className="text-gray-500 text-center py-8">No orders yet. Create your first order!</p>}
