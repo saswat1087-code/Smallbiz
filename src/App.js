@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-// Your verified Google Script Web App URL
-const API_URL = 'https://script.google.com/macros/s/AKfycbzc8knj8rERoXT94qUQ5WBhAI3FX49EUfMCv3FinO9IajmV_7moBKizw3qYqaAolYNY/exec';
+// Your newly updated Google Script Web App URL
+const API_URL = 'https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnKsWOLbk6H5Z2cq8uOe10EPxlecgxzvscV4Z-Cpu5TI-bk/exec';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -25,19 +25,19 @@ function App() {
       if (!response.ok) throw new Error('Network failure');
       const allData = await response.json();
 
-      // Ensure data is an array before processing
       const dataArray = Array.isArray(allData) ? allData : [];
 
+      // Maps array elements directly into your single-sheet column data fields
       const stockData = dataArray
-        .filter(row => row && row.sku && row.sku.trim() !== '' && !row.order_id)
+        .filter(row => row && row.sku && row.sku.toString().trim() !== '' && !row.order_id)
         .map(row => ({ ...row, id: row.__row_number__ }));
         
       const binsData = dataArray
-        .filter(row => row && row.bin_id && row.bin_id.trim() !== '')
+        .filter(row => row && row.bin_id && row.bin_id.toString().trim() !== '')
         .map(row => ({ ...row, id: row.__row_number__ }));
         
       const ordersData = dataArray
-        .filter(row => row && row.order_id && row.order_id.trim() !== '')
+        .filter(row => row && row.order_id && row.order_id.toString().trim() !== '')
         .map(row => ({ ...row, id: row.__row_number__ }));
 
       setStock(stockData);
@@ -114,10 +114,10 @@ function App() {
       const fileInput = document.getElementById('product-file-attachment');
       if (fileInput) fileInput.value = '';
 
-      setMessage('✅ Product and Attachment uploaded successfully!');
+      setMessage('✅ Product and Attachment added successfully!');
       await loadData();
     } catch (err) {
-      setMessage('❌ Failed to route product data');
+      setMessage('❌ Failed to save product data');
     } finally {
       setSaving(false);
     }
@@ -355,9 +355,9 @@ function App() {
                     <p className="text-xs text-slate-500 mt-1">
                       Quantity: <span className="text-slate-800 font-medium">{item.quantity || 0}</span> | Bin: <span className="text-slate-800 font-medium">{item.bin || 'None'}</span>
                     </p>
-                    {item.attachment && (
-                      <a href={item.attachment} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
-                        🔗 View Attached Document
+                    {item.attachment_url && (
+                      <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
+                        🔗 {item.attachment_name || 'View Attached Document'}
                       </a>
                     )}
                   </div>
