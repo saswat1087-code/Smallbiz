@@ -33,13 +33,11 @@ function App() {
   const loadData = async () => {
     try {
       setLoading(true);
-      
       const response = await fetch(API_URL);
       const allData = await response.json();
       
       console.log('📊 All data from sheet:', allData);
       
-      // Filter data based on available fields
       const stockData = allData.filter(row => row.sku && row.sku !== '' && !row.order_id);
       const binsData = allData.filter(row => row.bin_id && row.bin_id !== '');
       const ordersData = allData.filter(row => row.order_id && row.order_id !== '');
@@ -47,7 +45,6 @@ function App() {
       setStock(stockData);
       setBins(binsData);
       setOrders(ordersData);
-      
     } catch (error) {
       console.error('Error loading data:', error);
       setMessage('❌ Failed to load data');
@@ -61,10 +58,9 @@ function App() {
       setMessage('❌ Please fill in SKU and Description');
       return;
     }
-    
     setSaving(true);
     try {
-      const response = await fetch(API_URL, {
+      await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -74,14 +70,9 @@ function App() {
           bin: newProduct.bin || 'Unassigned'
         })
       });
-      
-      if (response.ok) {
-        setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
-        setMessage('✅ Product added successfully!');
-        await loadData();
-      } else {
-        setMessage('❌ Failed to add product');
-      }
+      setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
+      setMessage('✅ Product added successfully!');
+      await loadData();
     } catch (error) {
       setMessage('❌ Failed to add product');
     } finally {
@@ -94,10 +85,9 @@ function App() {
       setMessage('❌ Please enter Bin ID');
       return;
     }
-    
     setSaving(true);
     try {
-      const response = await fetch(API_URL, {
+      await fetch(API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -106,14 +96,9 @@ function App() {
           status: 'Available'
         })
       });
-      
-      if (response.ok) {
-        setNewBin({ bin_id: '', zone: '' });
-        setMessage('✅ Bin added successfully!');
-        await loadData();
-      } else {
-        setMessage('❌ Failed to add bin');
-      }
+      setNewBin({ bin_id: '', zone: '' });
+      setMessage('✅ Bin added successfully!');
+      await loadData();
     } catch (error) {
       setMessage('❌ Failed to add bin');
     } finally {
@@ -126,7 +111,6 @@ function App() {
       setMessage('❌ Please enter Order ID and Customer');
       return;
     }
-    
     setSaving(true);
     try {
       const response = await fetch(API_URL, {
@@ -158,32 +142,19 @@ function App() {
     setSaving(true);
     try {
       const orderToUpdate = orders.find(order => order.order_id === orderId);
-      
-      if (!orderToUpdate) {
-        setMessage('❌ Could not find order');
+      if (!orderToUpdate || !orderToUpdate.id) {
+        setMessage('❌ Cannot update order - please delete and recreate');
         setSaving(false);
         return;
       }
-      
-      if (!orderToUpdate.id) {
-        setMessage('❌ Please delete and recreate this order to enable status updates');
-        setSaving(false);
-        return;
-      }
-      
-      const response = await fetch(`${API_URL}/${orderToUpdate.id}`, {
+      await fetch(`${API_URL}/${orderToUpdate.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status: newStatus })
       });
-      
-      if (response.ok) {
-        setMessage(`✅ Order ${orderId} status updated to ${newStatus}`);
-        await loadData();
-        setShowStatusMenu(null);
-      } else {
-        setMessage(`❌ Failed to update order status`);
-      }
+      setMessage(`✅ Order ${orderId} status updated to ${newStatus}`);
+      await loadData();
+      setShowStatusMenu(null);
     } catch (error) {
       setMessage('❌ Failed to update order');
     } finally {
@@ -191,11 +162,48 @@ function App() {
     }
   };
 
+  const deleteOrder = async (orderId, rowId) => {
+    // If we have a row ID, use it
+    if (rowId) {
+      if (!window.confirm(`Delete order ${orderId}?`)) return;
+      setSaving(true);
+      try {
+        await fetch(`${API_URL}/${rowId}`, { method: 'DELETE' });
+        setMessage(`✅ Order ${orderId} deleted successfully!`);
+        await loadData();
+      } catch (error) {
+        setMessage(`❌ Failed to delete order`);
+      } finally {
+        setSaving(false);
+      }
+    } 
+    // If no row ID, try to delete by order_id (for old orders)
+    else {
+      if (!window.confirm(`Delete order ${orderId}? This will permanently remove it.`)) return;
+      setSaving(true);
+      try {
+        // Find all orders with this ID and delete them
+        const ordersToDelete = orders.filter(o => o.order_id === orderId);
+        for (const order of ordersToDelete) {
+          if (order.id) {
+            await fetch(`${API_URL}/${order.id}`, { method: 'DELETE' });
+          }
+        }
+        setMessage(`✅ Order ${orderId} deleted successfully!`);
+        await loadData();
+      } catch (error) {
+        setMessage(`❌ Failed to delete order`);
+      } finally {
+        setSaving(false);
+      }
+    }
+  };
+
   const addAttachmentToOrder = async (orderId, attachmentUrl, fileName) => {
     const orderToUpdate = orders.find(order => order.order_id === orderId);
     
     if (!orderToUpdate || !orderToUpdate.id) {
-      setMessage('❌ Cannot update order attachment');
+      setMessage('❌ Cannot update order attachment - please delete and recreate this order');
       return;
     }
     
@@ -231,28 +239,8 @@ function App() {
     }
   };
 
-  const deleteOrder = async (orderId, rowId) => {
-    if (!rowId) {
-      setMessage('❌ Cannot delete: Order has no ID');
-      return;
-    }
-    if (!window.confirm(`Delete order ${orderId}?`)) return;
-    
-    setSaving(true);
-    try {
-      await fetch(`${API_URL}/${rowId}`, { method: 'DELETE' });
-      setMessage(`✅ Order ${orderId} deleted successfully!`);
-      await loadData();
-    } catch (error) {
-      setMessage(`❌ Failed to delete order`);
-    } finally {
-      setSaving(false);
-    }
-  };
-
   const deleteProduct = async (productId, sku) => {
     if (!window.confirm(`Delete product ${sku}?`)) return;
-    
     setSaving(true);
     try {
       await fetch(`${API_URL}/${productId}`, { method: 'DELETE' });
@@ -267,7 +255,6 @@ function App() {
 
   const deleteBin = async (binId, bin_id) => {
     if (!window.confirm(`Delete bin ${bin_id}?`)) return;
-    
     setSaving(true);
     try {
       await fetch(`${API_URL}/${binId}`, { method: 'DELETE' });
@@ -362,7 +349,6 @@ function App() {
         {activeTab === 'stock' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">📦 Stock Management</h2>
-            
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">Add New Item</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -373,25 +359,19 @@ function App() {
                 <button onClick={addProduct} disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2">{saving ? 'Adding...' : '➕ Add Product'}</button>
               </div>
             </div>
-
             <h3 className="font-semibold mb-3 text-lg">Current Stock</h3>
             {stock.map((item, index) => (
               <div key={index} className="border rounded-lg p-3 mb-2 flex justify-between items-center">
-                <div>
-                  <p className="font-semibold">{item.description} ({item.sku})</p>
-                  <p className="text-sm text-gray-600">Quantity: {item.quantity} | Bin: {item.bin}</p>
-                </div>
+                <div><p className="font-semibold">{item.description} ({item.sku})</p><p className="text-sm text-gray-600">Quantity: {item.quantity} | Bin: {item.bin}</p></div>
                 <button onClick={() => deleteProduct(item.id, item.sku)} className="text-red-500 hover:text-red-700">🗑️</button>
               </div>
             ))}
-            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No items yet. Add your first product!</p>}
           </div>
         )}
 
         {activeTab === 'bins' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">🗑️ Bin Management</h2>
-            
             <div className="mb-8 p-4 bg-gray-50 rounded-lg">
               <h3 className="font-semibold mb-3 text-lg">Add New Bin</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -400,23 +380,17 @@ function App() {
                 <button onClick={addBin} disabled={saving} className="bg-blue-600 text-white px-4 py-2 rounded-lg md:col-span-2">{saving ? 'Adding...' : '➕ Add Bin'}</button>
               </div>
             </div>
-
             <h3 className="font-semibold mb-3 text-lg">Current Bins</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {bins.map((bin, index) => (
                 <div key={index} className="border rounded-lg p-3">
                   <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-semibold text-lg">{bin.bin_id}</p>
-                      <p className="text-sm text-gray-600">Zone: {bin.zone}</p>
-                      <p className="text-sm text-gray-600">Status: {bin.status}</p>
-                    </div>
+                    <div><p className="font-semibold text-lg">{bin.bin_id}</p><p className="text-sm text-gray-600">Zone: {bin.zone}</p><p className="text-sm text-gray-600">Status: {bin.status}</p></div>
                     <button onClick={() => deleteBin(bin.id, bin.bin_id)} className="text-red-500 hover:text-red-700">🗑️</button>
                   </div>
                 </div>
               ))}
             </div>
-            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin!</p>}
           </div>
         )}
 
@@ -526,7 +500,12 @@ function App() {
                       </button>
                     )}
                     
-                    <button onClick={() => deleteOrder(order.order_id, order.id)} className="text-red-500 hover:text-red-700">🗑️</button>
+                    <button 
+                      onClick={() => deleteOrder(order.order_id, order.id)} 
+                      className="text-red-500 hover:text-red-700"
+                    >
+                      🗑️
+                    </button>
                   </div>
                 </div>
                 
@@ -548,7 +527,9 @@ function App() {
                 )}
               </div>
             ))}
-            {orders.length === 0 && <p className="text-gray-500 text-center py-8">No orders yet. Create your first order!</p>}
+            {orders.length === 0 && (
+              <p className="text-gray-500 text-center py-8">No orders yet. Create your first order!</p>
+            )}
           </div>
         )}
       </div>
