@@ -5,12 +5,9 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnK
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  
-  // Initialized safely as empty arrays to prevent mapping crashes
   const [stock, setStock] = useState([]);
   const [bins, setBins] = useState([]);
   const [orders, setOrders] = useState([]);
-  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -48,7 +45,7 @@ function App() {
       setOrders(ordersData);
     } catch (error) {
       console.error('Error fetching data:', error);
-      setMessage('❌ Failed to synchronize data index');
+      setMessage('❌ Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -56,7 +53,6 @@ function App() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -66,29 +62,23 @@ function App() {
     }
   }, [message]);
 
-  const convertFileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = () => resolve(reader.result);
-      reader.onerror = (error) => reject(error);
-    });
-  };
-
   const addProduct = async () => {
-    if (!newProduct.sku.trim() || !newProduct.description.trim()) {
-      setMessage('❌ Please specify SKU and Description');
+    if (!newProduct.sku.trim()) {
+      setMessage('❌ Please enter SKU');
       return;
     }
-    
+    if (!newProduct.description.trim()) {
+      setMessage('❌ Please enter Description');
+      return;
+    }
     if (!newProduct.bin.trim()) {
-      setMessage('❌ Please enter a Bin Location');
+      setMessage('❌ Please enter Bin Location');
       return;
     }
     
-    const safeBins = bins || [];
-    const binExists = safeBins.some(bin => 
-      bin?.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
+    // Check if bin exists
+    const binExists = bins.some(bin => 
+      bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
     );
     
     if (!binExists) {
@@ -98,30 +88,17 @@ function App() {
     
     setSaving(true);
     try {
-      let filePayload = {};
-      
-      if (selectedFile) {
-        const base64String = await convertFileToBase64(selectedFile);
-        filePayload = {
-          fileData: base64String,
-          fileName: selectedFile.name,
-          fileType: selectedFile.type
-        };
-      }
-
       const payload = {
         action: 'ADD_PRODUCT',
         sku: newProduct.sku.trim().toUpperCase(),
         description: newProduct.description.trim(),
         quantity: parseInt(newProduct.quantity, 10) || 0,
-        bin: newProduct.bin.trim().toUpperCase(),
-        ...filePayload
+        bin: newProduct.bin.trim().toUpperCase()
       };
 
       const res = await fetch(API_URL, {
-        redirect: 'follow', 
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
       
@@ -133,10 +110,10 @@ function App() {
       const fileInput = document.getElementById('product-file-attachment');
       if (fileInput) fileInput.value = '';
 
-      setMessage('✅ Product and Attachment added successfully!');
+      setMessage('✅ Product added successfully!');
       await loadData();
     } catch (err) {
-      setMessage('❌ Failed to save product data');
+      setMessage('❌ Failed to save product');
     } finally {
       setSaving(false);
     }
@@ -144,15 +121,14 @@ function App() {
 
   const addBin = async () => {
     if (!newBin.bin_id.trim()) {
-      setMessage('❌ Please supply a valid Bin ID');
+      setMessage('❌ Please enter Bin ID');
       return;
     }
     setSaving(true);
     try {
       const res = await fetch(API_URL, {
-        redirect: 'follow',
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'ADD_BIN',
           bin_id: newBin.bin_id.trim().toUpperCase(),
@@ -162,10 +138,10 @@ function App() {
       });
       if (!res.ok) throw new Error();
       setNewBin({ bin_id: '', zone: '' });
-      setMessage('✅ Bin mapped successfully!');
+      setMessage('✅ Bin added successfully!');
       await loadData();
     } catch {
-      setMessage('❌ Failed to provision new bin');
+      setMessage('❌ Failed to add bin');
     } finally {
       setSaving(false);
     }
@@ -173,15 +149,14 @@ function App() {
 
   const addOrder = async () => {
     if (!newOrder.order_id.trim() || !newOrder.customer.trim()) {
-      setMessage('❌ Please input Order ID and Customer Name');
+      setMessage('❌ Please enter Order ID and Customer');
       return;
     }
     setSaving(true);
     try {
       const res = await fetch(API_URL, {
-        redirect: 'follow',
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           action: 'ADD_ORDER',
           order_id: newOrder.order_id.trim().toUpperCase(),
@@ -192,10 +167,10 @@ function App() {
       });
       if (!res.ok) throw new Error();
       setNewOrder({ order_id: '', customer: '' });
-      setMessage('✅ Order generated successfully!');
+      setMessage('✅ Order created successfully!');
       await loadData();
     } catch {
-      setMessage('❌ Failed to stage order');
+      setMessage('❌ Failed to create order');
     } finally {
       setSaving(false);
     }
@@ -203,15 +178,14 @@ function App() {
 
   const updateOrderStatus = async (rowId, orderId, newStatus) => {
     if (!rowId) {
-      setMessage('❌ Target ID missing');
+      setMessage('❌ Missing order reference');
       return;
     }
     setSaving(true);
     try {
       const res = await fetch(API_URL, {
-        redirect: 'follow',
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'UPDATE_STATUS', 
           rowNumber: parseInt(rowId, 10), 
@@ -219,38 +193,34 @@ function App() {
         })
       });
       if (!res.ok) throw new Error();
-      setMessage(`✅ Order ${orderId} status changed to: ${newStatus}`);
+      setMessage(`✅ Order ${orderId} status: ${newStatus}`);
       await loadData();
       setShowStatusMenu(null);
     } catch {
-      setMessage('❌ Failed to change order status');
+      setMessage('❌ Failed to update status');
     } finally {
       setSaving(false);
     }
   };
 
-  const executeItemRemoval = async (rowId, label) => {
-    if (!rowId) {
-      setMessage('❌ Missing reference coordinate');
-      return;
-    }
-    if (!window.confirm(`Permanently delete record: ${label}?`)) return;
+  const deleteItem = async (rowId, label) => {
+    if (!rowId) return;
+    if (!window.confirm(`Delete ${label}?`)) return;
     setSaving(true);
     try {
       const res = await fetch(API_URL, { 
-        redirect: 'follow',
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           action: 'DELETE_ROW', 
           rowNumber: parseInt(rowId, 10) 
         })
       });
       if (!res.ok) throw new Error();
-      setMessage(`✅ Record removed successfully.`);
+      setMessage(`✅ Deleted successfully`);
       await loadData();
     } catch {
-      setMessage('❌ Delete request failed');
+      setMessage('❌ Delete failed');
     } finally {
       setSaving(false);
     }
@@ -258,238 +228,289 @@ function App() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Open': return 'bg-amber-100 text-amber-900 border border-amber-300';
-      case 'In Transit': return 'bg-sky-100 text-sky-900 border border-sky-300';
-      case 'Closed': return 'bg-emerald-100 text-emerald-900 border border-emerald-300';
-      default: return 'bg-slate-100 text-slate-800 border border-slate-300';
+      case 'Open': return 'bg-yellow-100 text-yellow-800';
+      case 'In Transit': return 'bg-blue-100 text-blue-800';
+      case 'Closed': return 'bg-green-100 text-green-800';
+      default: return 'bg-gray-100 text-gray-800';
     }
   };
 
-  // Safe calculations for dashboard
-  const safeStock = stock || [];
-  const safeBins = bins || [];
-  const safeOrders = orders || [];
-  const totalStockCount = safeStock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0);
-
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="text-center">
-          <div className="text-4xl mb-3">📊</div>
-          <div className="text-lg font-medium text-slate-600">Loading WMS Data Matrix...</div>
+          <div className="text-2xl mb-2">📊</div>
+          <div className="text-xl">Loading WMS...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
-      <header className="bg-slate-900 text-white shadow-md">
-        <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">📦</span>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">SmallBiz WMS</h1>
-              <p className="text-xs text-slate-400">Powered by Google Scripts Deployment</p>
-            </div>
-          </div>
-          <div className="text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded border border-slate-700">
-            System Online
-          </div>
-        </div>
+    <div className="min-h-screen bg-gray-100">
+      <header className="bg-blue-600 text-white p-4 shadow-lg">
+        <h1 className="text-2xl font-bold text-center">SmallBiz WMS</h1>
+        <p className="text-center text-sm mt-1">Powered by Google Sheets</p>
       </header>
 
       {message && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl text-sm font-medium ${
-          message.includes('✅') ? 'bg-slate-900 text-emerald-400 border border-emerald-500/30' : 'bg-slate-900 text-rose-400 border border-rose-500/30'
+        <div className={`fixed top-20 right-4 z-50 p-3 rounded-lg shadow-lg ${
+          message.includes('✅') ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
         }`}>
           {message}
         </div>
       )}
 
-      <main className="container mx-auto p-4 max-w-6xl mt-4">
-        <nav className="flex gap-1.5 mb-6 bg-slate-200/60 p-1.5 rounded-xl max-w-md">
-          {[
-            { id: 'dashboard', label: 'Dashboard', icon: '📊' },
-            { id: 'stock', label: 'Stock', icon: '📦' },
-            { id: 'bins', label: 'Bins', icon: '🗑️' },
-            { id: 'orders', label: 'Orders', icon: '📝' }
-          ].map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => { setActiveTab(tab.id); setShowStatusMenu(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:bg-white/50'
-              }`}
-            >
-              <span>{tab.icon}</span>
-              <span className="hidden sm:inline">{tab.label}</span>
-            </button>
-          ))}
-        </nav>
+      <div className="container mx-auto p-4 max-w-6xl">
+        {/* Navigation */}
+        <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+          <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-2 rounded-lg font-semibold ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-white'}`}>
+            📊 Dashboard
+          </button>
+          <button onClick={() => setActiveTab('stock')} className={`px-6 py-2 rounded-lg font-semibold ${activeTab === 'stock' ? 'bg-blue-600 text-white' : 'bg-white'}`}>
+            📦 Stock
+          </button>
+          <button onClick={() => setActiveTab('bins')} className={`px-6 py-2 rounded-lg font-semibold ${activeTab === 'bins' ? 'bg-blue-600 text-white' : 'bg-white'}`}>
+            🗑️ Bins
+          </button>
+          <button onClick={() => setActiveTab('orders')} className={`px-6 py-2 rounded-lg font-semibold ${activeTab === 'orders' ? 'bg-blue-600 text-white' : 'bg-white'}`}>
+            📝 Orders
+          </button>
+        </div>
 
+        {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-5 text-slate-800">Operational Aggregates</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { title: 'Units in Stock', count: totalStockCount, color: 'from-blue-500 to-indigo-600', icon: '📦', targetTab: 'stock' },
-                { title: 'Unique SKUs', count: safeStock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️', targetTab: 'stock' },
-                { title: 'Allocated Locations', count: safeBins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️', targetTab: 'bins' },
-                { title: 'Active Pipelines', count: safeOrders.length, color: 'from-amber-500 to-orange-600', icon: '📋', targetTab: 'orders' }
-              ].map((card, idx) => (
-                <div 
-                  key={idx} 
-                  onClick={() => setActiveTab(card.targetTab)}
-                  className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm cursor-pointer hover:opacity-90 transition-opacity`}
-                >
-                  <div className="text-2xl mb-1 opacity-90">{card.icon}</div>
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-white/80">{card.title}</h3>
-                  <p className="text-2xl font-black mt-1">{card.count}</p>
-                </div>
-              ))}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Dashboard Overview</h2>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg p-6 text-white">
+                <div className="text-3xl mb-2">📦</div>
+                <h3 className="text-sm opacity-90">Total Stock</h3>
+                <p className="text-3xl font-bold">{stock.reduce((sum, item) => sum + (parseInt(item?.quantity) || 0), 0)}</p>
+              </div>
+              <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white">
+                <div className="text-3xl mb-2">🏷️</div>
+                <h3 className="text-sm opacity-90">Products</h3>
+                <p className="text-3xl font-bold">{stock.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-500 to-purple-600 rounded-lg p-6 text-white">
+                <div className="text-3xl mb-2">🗑️</div>
+                <h3 className="text-sm opacity-90">Bins</h3>
+                <p className="text-3xl font-bold">{bins.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-orange-500 to-orange-600 rounded-lg p-6 text-white">
+                <div className="text-3xl mb-2">📋</div>
+                <h3 className="text-sm opacity-90">Orders</h3>
+                <p className="text-3xl font-bold">{orders.length}</p>
+              </div>
             </div>
           </div>
         )}
 
+        {/* Stock Tab */}
         {activeTab === 'stock' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4 text-slate-800">Inventory Index</h2>
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Stock Management</h2>
+            
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3">Add New Product</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input 
                   type="text" 
-                  placeholder="SKU ID" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  placeholder="SKU" 
+                  className="border p-2 rounded" 
                   value={newProduct.sku} 
-                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} 
+                  onChange={(e) => setNewProduct({...newProduct, sku: e.target.value.toUpperCase()})} 
                 />
                 <input 
                   type="text" 
                   placeholder="Description" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  className="border p-2 rounded" 
                   value={newProduct.description} 
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} 
+                  onChange={(e) => setNewProduct({...newProduct, description: e.target.value})} 
                 />
                 <input 
                   type="number" 
                   placeholder="Quantity" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  className="border p-2 rounded" 
                   value={newProduct.quantity} 
-                  onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} 
+                  onChange={(e) => setNewProduct({...newProduct, quantity: e.target.value})} 
                 />
-                
                 <div className="relative">
                   <input 
                     type="text" 
                     placeholder="Bin Location" 
-                    className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
+                    className="border p-2 rounded w-full" 
                     value={newProduct.bin} 
                     onChange={(e) => {
-                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });
+                      setNewProduct({...newProduct, bin: e.target.value.toUpperCase()});
                       setShowBinSuggestions(true);
                     }}
                     onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}
                     onFocus={() => setShowBinSuggestions(true)}
                   />
-                  {showBinSuggestions && safeBins.length > 0 && newProduct.bin && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                      {safeBins
-                        .filter(bin => bin?.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))
+                  {showBinSuggestions && bins.length > 0 && newProduct.bin && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border rounded-lg shadow-lg max-h-32 overflow-y-auto">
+                      {bins
+                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))
                         .slice(0, 5)
                         .map((bin, idx) => (
                           <div 
                             key={idx}
-                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
+                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b"
                             onMouseDown={() => {
-                              setNewProduct({ ...newProduct, bin: bin.bin_id });
+                              setNewProduct({...newProduct, bin: bin.bin_id});
                               setShowBinSuggestions(false);
                             }}
                           >
-                            <span className="font-mono">{bin.bin_id}</span>
-                            <span className="text-xs text-slate-400 ml-2">({bin.zone || 'General'})</span>
+                            {bin.bin_id} ({bin.zone || 'General'})
                           </div>
                         ))}
-                      {safeBins.filter(b => b?.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
-                          ⚠️ Bin "{newProduct.bin}" not found.
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
-                
-                <div className="sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300">
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment (Image, PDF, Document)</label>
-                  <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setSelectedFile(e.target.files[0])} />
-                </div>
-
-                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
-                  {saving ? 'Uploading Payload String...' : '➕ Add Product with Attachment'}
+                <button 
+                  onClick={addProduct} 
+                  disabled={saving}
+                  className="md:col-span-2 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+                >
+                  {saving ? 'Adding...' : '➕ Add Product'}
                 </button>
               </div>
             </div>
-            
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Stock</h3>
-            <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
-              {safeStock.map((item, index) => (
-                <div key={item.id || index} className="py-3 flex justify-between items-center group">
-                  <div>
-                    <p className="font-semibold text-sm text-slate-800">
-                      {item?.description || 'Unnamed'}{' '}
-                      <span className="text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1">{item?.sku}</span>
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Quantity: <span className="text-slate-800 font-medium">{item?.quantity || 0}</span> | 
-                      Bin: <span className={`font-medium ${safeBins.some(b => b?.bin_id === item?.bin) ? 'text-emerald-600' : 'text-rose-500'}`}>{item?.bin || 'None'}</span>
-                    </p>
-                    {item?.attachment_url && (
-                      <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
-                        🔗 {item.attachment_name || 'View Attached Document'}
-                      </a>
-                    )}
-                  </div>
-                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
+
+            <h3 className="font-semibold mb-3">Current Stock</h3>
+            {stock.map((item, idx) => (
+              <div key={idx} className="border-b py-3 flex justify-between items-center">
+                <div>
+                  <p className="font-semibold">{item.description} ({item.sku})</p>
+                  <p className="text-sm text-gray-600">Qty: {item.quantity} | Bin: {item.bin}</p>
                 </div>
-              ))}
-              {safeStock.length === 0 && <p className="text-slate-400 text-sm text-center py-6">No stock records found.</p>}
-            </div>
+                <button onClick={() => deleteItem(item.id, item.sku)} className="text-red-500">🗑️</button>
+              </div>
+            ))}
+            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No products yet</p>}
           </div>
         )}
 
+        {/* Bins Tab */}
         {activeTab === 'bins' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4 text-slate-800">Bin Locations</h2>
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Bin</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="Bin ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
-                <input type="text" placeholder="Zone Matrix" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />
-                <button onClick={addBin} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Deploying...' : '➕ Add Bin'}</button>
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Bin Management</h2>
+            
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3">Add New Bin</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Bin ID" 
+                  className="border p-2 rounded" 
+                  value={newBin.bin_id} 
+                  onChange={(e) => setNewBin({...newBin, bin_id: e.target.value.toUpperCase()})} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Zone" 
+                  className="border p-2 rounded" 
+                  value={newBin.zone} 
+                  onChange={(e) => setNewBin({...newBin, zone: e.target.value})} 
+                />
+                <button 
+                  onClick={addBin} 
+                  disabled={saving}
+                  className="md:col-span-2 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+                >
+                  {saving ? 'Adding...' : '➕ Add Bin'}
+                </button>
               </div>
             </div>
 
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Bins</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
-              {safeBins.map((bin, index) => (
-                <div key={bin.id || index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start">
+            <h3 className="font-semibold mb-3">Current Bins</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              {bins.map((bin, idx) => (
+                <div key={idx} className="border rounded-lg p-3 flex justify-between items-center">
                   <div>
-                    <p className="font-bold font-mono text-slate-800 text-base">{bin?.bin_id}</p>
-                    <p className="text-xs text-slate-500 mt-1">Zone: <span className="font-medium text-slate-700">{bin?.zone || 'General'}</span></p>
-                    <p className="text-xs text-slate-500">Status: <span className="font-medium text-emerald-600">{bin?.status || 'Available'}</span></p>
+                    <p className="font-semibold">{bin.bin_id}</p>
+                    <p className="text-sm text-gray-600">Zone: {bin.zone || 'General'}</p>
                   </div>
-                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5 transition-all">🗑️</button>
+                  <button onClick={() => deleteItem(bin.id, bin.bin_id)} className="text-red-500">🗑️</button>
                 </div>
               ))}
-              {safeBins.length === 0 && <p className="col-span-full text-slate-400 text-sm text-center py-6">No bins provisioned.</p>}
             </div>
+            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet</p>}
           </div>
         )}
 
+        {/* Orders Tab */}
         {activeTab === 'orders' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Create New Order</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h2 className="text-2xl font-bold mb-6">Order Management</h2>
+            
+            <div className="mb-8 p-4 bg-gray-50 rounded-lg">
+              <h3 className="font-semibold mb-3">Create New Order</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input 
+                  type="text" 
+                  placeholder="Order ID" 
+                  className="border p-2 rounded" 
+                  value={newOrder.order_id} 
+                  onChange={(e) => setNewOrder({...newOrder, order_id: e.target.value.toUpperCase()})} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Customer" 
+                  className="border p-2 rounded" 
+                  value={newOrder.customer} 
+                  onChange={(e) => setNewOrder({...newOrder, customer: e.target.value})} 
+                />
+                <button 
+                  onClick={addOrder} 
+                  disabled={saving}
+                  className="md:col-span-2 bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+                >
+                  {saving ? 'Creating...' : '➕ Create Order'}
+                </button>
+              </div>
+            </div>
+
+            <h3 className="font-semibold mb-3">All Orders</h3>
+            {orders.map((order, idx) => (
+              <div key={idx} className="border rounded-lg p-4 mb-3">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="font-semibold text-lg">{order.order_id}</p>
+                    <p className="text-sm text-gray-600">Customer: {order.customer}</p>
+                    {order.created_at && (
+                      <p className="text-xs text-gray-400">Created: {new Date(order.created_at).toLocaleDateString()}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <div className="relative">
+                      <button
+                        onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)}
+                        className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusColor(order.status)}`}
+                      >
+                        {order.status || 'Open'} ▼
+                      </button>
+                      {showStatusMenu === order.order_id && (
+                        <div className="absolute right-0 mt-2 w-32 bg-white rounded-lg shadow-lg border z-10">
+                          <button onClick={() => updateOrderStatus(order.id, order.order_id, 'Open')} className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-100">Open</button>
+                          <button onClick={() => updateOrderStatus(order.id, order.order_id, 'In Transit')} className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-100">In Transit</button>
+                          <button onClick={() => updateOrderStatus(order.id, order.order_id, 'Closed')} className="block w-full text-left px-3 py-2 text-sm hover:bg-gray-100">Closed</button>
+                        </div>
+                      )}
+                    </div>
+                    <button onClick={() => deleteItem(order.id, order.order_id)} className="text-red-500">🗑️</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {orders.length === 0 && <p className="text-gray-500 text-center py-8">No orders yet</p>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default App;
