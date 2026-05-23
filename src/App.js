@@ -13,6 +13,7 @@ function App() {
   const [message, setMessage] = useState('');
   const [showStatusMenu, setShowStatusMenu] = useState(null);
   const [showBinSuggestions, setShowBinSuggestions] = useState(false);
+  const [showSkuSuggestions, setShowSkuSuggestions] = useState(false);
 
   const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
   const [selectedFile, setSelectedFile] = useState(null);
@@ -63,6 +64,14 @@ function App() {
     }
   }, [message]);
 
+  // Check if SKU exists and return matching product
+  const findExistingProduct = (sku, bin) => {
+    return stock.find(item => 
+      item.sku && item.sku.toString().toUpperCase() === sku.toUpperCase() &&
+      item.bin && item.bin.toString().toUpperCase() === bin.toUpperCase()
+    );
+  };
+
   const convertFileToBase64 = (file) => {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -70,6 +79,27 @@ function App() {
       reader.onload = () => resolve(reader.result);
       reader.onerror = (error) => reject(error);
     });
+  };
+
+  // Auto-fetch description when SKU is entered
+  const handleSkuChange = (skuValue) => {
+    const upperSku = skuValue.toUpperCase();
+    setNewProduct({ ...newProduct, sku: upperSku });
+    
+    // Find existing product with same SKU (any bin)
+    const existingItem = stock.find(item => 
+      item.sku && item.sku.toString().toUpperCase() === upperSku
+    );
+    
+    if (existingItem && existingItem.description) {
+      setNewProduct(prev => ({ 
+        ...prev, 
+        description: existingItem.description,
+        sku: upperSku
+      }));
+      setMessage(`📋 Auto-filled description: ${existingItem.description}`);
+      setTimeout(() => setMessage(''), 2000);
+    }
   };
 
   const addProduct = async () => {
@@ -93,6 +123,9 @@ function App() {
       return;
     }
     
+    // SKU VALIDATION - Check if product exists in same bin
+    const existingProduct = findExistingProduct(newProduct.sku, newProduct.bin);
+    
     setSaving(true);
     try {
       let filePayload = {};
@@ -106,14 +139,32 @@ function App() {
         };
       }
 
-      const payload = {
-        action: 'ADD_PRODUCT',
-        sku: newProduct.sku.trim().toUpperCase(),
-        description: newProduct.description.trim(),
-        quantity: parseInt(newProduct.quantity, 10) || 0,
-        bin: newProduct.bin.trim().toUpperCase(),
-        ...filePayload
-      };
+      let payload;
+      
+      if (existingProduct && existingProduct.id) {
+        // UPDATE EXISTING PRODUCT - Add to existing quantity
+        const newQuantity = (parseInt(existingProduct.quantity, 10) || 0) + (parseInt(newProduct.quantity, 10) || 0);
+        
+        payload = {
+          action: 'UPDATE_PRODUCT',
+          rowNumber: parseInt(existingProduct.id, 10),
+          sku: newProduct.sku.trim().toUpperCase(),
+          description: newProduct.description.trim(),
+          quantity: newQuantity,
+          bin: newProduct.bin.trim().toUpperCase(),
+          ...filePayload
+        };
+      } else {
+        // CREATE NEW PRODUCT
+        payload = {
+          action: 'ADD_PRODUCT',
+          sku: newProduct.sku.trim().toUpperCase(),
+          description: newProduct.description.trim(),
+          quantity: parseInt(newProduct.quantity, 10) || 0,
+          bin: newProduct.bin.trim().toUpperCase(),
+          ...filePayload
+        };
+      }
 
       const res = await fetch(API_URL, {
         redirect: 'follow', 
@@ -124,15 +175,21 @@ function App() {
       
       if (!res.ok) throw new Error();
       
+      if (existingProduct) {
+        setMessage(`✅ Stock updated! Added ${parseInt(newProduct.quantity, 10) || 0} units to ${newProduct.sku}. New total: ${(parseInt(existingProduct.quantity, 10) || 0) + (parseInt(newProduct.quantity, 10) || 0)}`);
+      } else {
+        setMessage('✅ New product added successfully!');
+      }
+      
       setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
       setSelectedFile(null);
       
       const fileInput = document.getElementById('product-file-attachment');
       if (fileInput) fileInput.value = '';
 
-      setMessage('✅ Product and Attachment added successfully!');
       await loadData();
     } catch (err) {
+      console.error('Error:', err);
       setMessage('❌ Failed to save product data');
     } finally {
       setSaving(false);
@@ -292,7 +349,7 @@ function App() {
 
       {message && (
         <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl text-sm font-medium ${
-          message.includes('✅') ? 'bg-slate-900 text-emerald-400 border border-emerald-500/30' : 'bg-slate-900 text-rose-400 border border-rose-500/30'
+          message.includes('✅') || message.includes('📋') ? 'bg-slate-900 text-emerald-400 border border-emerald-500/30' : 'bg-slate-900 text-rose-400 border border-rose-500/30'
         }`}>
           {message}
         </div>
@@ -343,25 +400,57 @@ function App() {
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Inventory Index</h2>
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product</h3>
+              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product / Update Stock</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* SKU Input with Auto-suggestion */}
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    placeholder="SKU ID (e.g., MAT001)" 
+                    className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
+                    value={newProduct.sku} 
+                    onChange={(e) => handleSkuChange(e.target.value)}
+                    onFocus={() => setShowSkuSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowSkuSuggestions(false), 200)}
+                  />
+                  {showSkuSuggestions && stock.length > 0 && newProduct.sku && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {stock
+                        .filter(item => item.sku && item.sku.toUpperCase().includes(newProduct.sku.toUpperCase()))
+                        .slice(0, 5)
+                        .map((item, idx) => (
+                          <div 
+                            key={idx}
+                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
+                            onMouseDown={() => {
+                              handleSkuChange(item.sku);
+                              setNewProduct(prev => ({ 
+                                ...prev, 
+                                bin: item.bin || '',
+                                quantity: ''
+                              }));
+                              setShowSkuSuggestions(false);
+                            }}
+                          >
+                            <div className="font-mono font-medium">{item.sku}</div>
+                            <div className="text-xs text-slate-500">{item.description}</div>
+                            <div className="text-xs text-slate-400">Bin: {item.bin} | Stock: {item.quantity}</div>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+                
                 <input 
                   type="text" 
-                  placeholder="SKU ID" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
-                  value={newProduct.sku} 
-                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} 
-                />
-                <input 
-                  type="text" 
-                  placeholder="Description" 
+                  placeholder="Description (auto-fetched if SKU exists)" 
                   className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
                   value={newProduct.description} 
                   onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} 
                 />
                 <input 
                   type="number" 
-                  placeholder="Quantity" 
+                  placeholder="Quantity to add" 
                   className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
                   value={newProduct.quantity} 
                   onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} 
@@ -414,7 +503,7 @@ function App() {
                 </div>
 
                 <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
-                  {saving ? 'Uploading Payload String...' : '➕ Add Product with Attachment'}
+                  {saving ? 'Processing...' : (findExistingProduct(newProduct.sku, newProduct.bin) ? '➕ Update Stock (Add to existing)' : '➕ Add New Product')}
                 </button>
               </div>
             </div>
