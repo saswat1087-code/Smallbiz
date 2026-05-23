@@ -81,10 +81,22 @@ function App() {
       setMessage('❌ Please enter an SKU');
       return;
     }
-    if (!description) {
+    
+    // === SKU + BIN DUPLICATE CHECK ===
+    const existingItem = stock.find(
+      (item) =>
+        item.sku &&
+        item.sku.toString().toUpperCase() === sku &&
+        item.bin &&
+        item.bin.toString().toUpperCase() === bin
+    );
+
+    // If it doesn't exist, description becomes mandatory
+    if (!existingItem && !description) {
       setMessage('❌ Please enter a Description');
       return;
     }
+    
     if (!bin) {
       setMessage('❌ Please enter a Bin Location');
       return;
@@ -99,27 +111,18 @@ function App() {
       return;
     }
 
-    // === SKU + BIN DUPLICATE CHECK (Accumulate Quantity) ===
-    const existingItem = stock.find(
-      (item) =>
-        item.sku &&
-        item.sku.toString().toUpperCase() === sku &&
-        item.bin &&
-        item.bin.toString().toUpperCase() === bin
-    );
-
     let finalDescription = description;
     let finalQuantity = quantityToAdd;
 
     if (existingItem) {
-      // Same SKU + Same Bin → Accumulate quantity
+      // Same SKU + Same Bin → Accumulate quantity, skip description checks entirely
       const existingQty = parseInt(existingItem.quantity, 10) || 0;
       finalQuantity = existingQty + quantityToAdd;
       finalDescription = existingItem.description || description;
 
       setMessage(`ℹ️ Quantity updated! New total: ${finalQuantity} (was ${existingQty})`);
     } else {
-      // Check for SKU with different description
+      // New placement: Auto-fill description if the SKU exists elsewhere in the facility
       const existingSKU = stock.find(
         (item) => item.sku && item.sku.toString().toUpperCase() === sku
       );
@@ -127,7 +130,7 @@ function App() {
         const existingDesc = existingSKU.description?.trim();
         if (existingDesc && existingDesc.toLowerCase() !== description.toLowerCase()) {
           finalDescription = existingDesc;
-          setMessage(`ℹ️ Description auto-corrected to: "${existingDesc}"`);
+          setMessage(`ℹ️ Description auto-corrected to match SKU profile: "${existingDesc}"`);
         }
       }
     }
@@ -146,7 +149,6 @@ function App() {
       }
 
       // === OPTION A DYNAMIC PAYLOAD ===
-      // If the row exists, switch action to UPDATE_QUANTITY and append rowNumber
       const payload = {
         action: existingItem ? 'UPDATE_QUANTITY' : 'ADD_PRODUCT',
         ...(existingItem && { rowNumber: parseInt(existingItem.id, 10) }),
