@@ -73,6 +73,8 @@ function App() {
   const addProduct = async () => {
     const sku = newProduct.sku.trim().toUpperCase();
     const description = newProduct.description.trim();
+    const bin = newProduct.bin.trim().toUpperCase();
+    const quantityToAdd = parseInt(newProduct.quantity, 10) || 0;
 
     if (!sku) {
       setMessage('❌ Please enter an SKU');
@@ -82,33 +84,51 @@ function App() {
       setMessage('❌ Please enter a Description');
       return;
     }
-
-    const existingProduct = stock.find(
-      (item) => item.sku && item.sku.toString().toUpperCase() === sku
-    );
-
-    let finalDescription = description;
-
-    if (existingProduct) {
-      const existingDescription = existingProduct.description?.trim();
-      if (existingDescription && existingDescription.toLowerCase() !== description.toLowerCase()) {
-        finalDescription = existingDescription;
-        setMessage(`ℹ️ Description auto-corrected to match existing SKU: "${existingDescription}"`);
-      }
-    }
-
-    if (!newProduct.bin.trim()) {
+    if (!bin) {
       setMessage('❌ Please enter a Bin Location');
       return;
     }
 
+    // === BIN VALIDATION ===
     const binExists = bins.some(
-      (bin) => bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
+      (b) => b.bin_id && b.bin_id.toString().toUpperCase() === bin
+    );
+    if (!binExists) {
+      setMessage(`❌ Bin "${bin}" does not exist. Please add it in the Bins tab first.`);
+      return;
+    }
+
+    // === SKU + BIN DUPLICATE CHECK (Accumulate Quantity) ===
+    const existingItem = stock.find(
+      (item) =>
+        item.sku &&
+        item.sku.toString().toUpperCase() === sku &&
+        item.bin &&
+        item.bin.toString().toUpperCase() === bin
     );
 
-    if (!binExists) {
-      setMessage(`❌ Bin "${newProduct.bin.toUpperCase()}" does not exist. Please add it in the Bins tab first.`);
-      return;
+    let finalDescription = description;
+    let finalQuantity = quantityToAdd;
+
+    if (existingItem) {
+      // Same SKU + Same Bin → Accumulate quantity
+      const existingQty = parseInt(existingItem.quantity, 10) || 0;
+      finalQuantity = existingQty + quantityToAdd;
+      finalDescription = existingItem.description || description;
+
+      setMessage(`ℹ️ Quantity updated! New total: ${finalQuantity} (was ${existingQty})`);
+    } else {
+      // Check for SKU with different description (existing logic)
+      const existingSKU = stock.find(
+        (item) => item.sku && item.sku.toString().toUpperCase() === sku
+      );
+      if (existingSKU) {
+        const existingDesc = existingSKU.description?.trim();
+        if (existingDesc && existingDesc.toLowerCase() !== description.toLowerCase()) {
+          finalDescription = existingDesc;
+          setMessage(`ℹ️ Description auto-corrected to: "${existingDesc}"`);
+        }
+      }
     }
 
     setSaving(true);
@@ -128,8 +148,8 @@ function App() {
         action: 'ADD_PRODUCT',
         sku: sku,
         description: finalDescription,
-        quantity: parseInt(newProduct.quantity, 10) || 0,
-        bin: newProduct.bin.trim().toUpperCase(),
+        quantity: finalQuantity,
+        bin: bin,
         ...filePayload,
       };
 
@@ -148,7 +168,7 @@ function App() {
       const fileInput = document.getElementById('product-file-attachment');
       if (fileInput) fileInput.value = '';
 
-      if (!message.includes('auto-corrected')) {
+      if (!message.includes('updated') && !message.includes('auto-corrected')) {
         setMessage('✅ Product added successfully!');
       }
 
@@ -159,6 +179,8 @@ function App() {
       setSaving(false);
     }
   };
+
+  // ... (rest of the functions remain the same: addBin, addOrder, updateOrderStatus, etc.)
 
   const addBin = async () => {
     if (!newBin.bin_id.trim()) {
@@ -342,7 +364,7 @@ function App() {
           ))}
         </nav>
 
-        {/* ==================== DASHBOARD ==================== */}
+        {/* DASHBOARD */}
         {activeTab === 'dashboard' && (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-5 text-slate-800">Operational Aggregates</h2>
@@ -363,7 +385,7 @@ function App() {
           </div>
         )}
 
-        {/* ==================== STOCK ==================== */}
+        {/* STOCK TAB */}
         {activeTab === 'stock' && (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Inventory Index</h2>
@@ -473,7 +495,7 @@ function App() {
           </div>
         )}
 
-        {/* ==================== BINS ==================== */}
+        {/* BINS TAB */}
         {activeTab === 'bins' && (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Bin Locations</h2>
@@ -503,7 +525,7 @@ function App() {
           </div>
         )}
 
-        {/* ==================== ORDERS ==================== */}
+        {/* ORDERS TAB */}
         {activeTab === 'orders' && (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
