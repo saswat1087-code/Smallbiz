@@ -12,6 +12,7 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [showStatusMenu, setShowStatusMenu] = useState(null);
+  const [debugInfo, setDebugInfo] = useState('');
 
   const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
   const [newBin, setNewBin] = useState({ bin_id: '', zone: '' });
@@ -20,8 +21,13 @@ function App() {
   const loadData = async () => {
     try {
       setLoading(true);
+      console.log('Fetching data from:', API_URL);
+      
       const response = await fetch(API_URL);
+      console.log('Response status:', response.status);
+      
       const allData = await response.json();
+      console.log('Data received:', allData);
       
       const dataArray = Array.isArray(allData) ? allData : [];
       
@@ -33,8 +39,9 @@ function App() {
       setBins(binsData);
       setOrders(ordersData);
     } catch (error) {
-      console.error('Error:', error);
-      setMessage('❌ Failed to load data');
+      console.error('Load error:', error);
+      setMessage('❌ Failed to load data: ' + error.message);
+      setDebugInfo('Error: ' + JSON.stringify(error));
     } finally {
       setLoading(false);
     }
@@ -46,40 +53,52 @@ function App() {
 
   useEffect(() => {
     if (message) {
-      const timer = setTimeout(() => setMessage(''), 3000);
+      const timer = setTimeout(() => setMessage(''), 5000);
       return () => clearTimeout(timer);
     }
   }, [message]);
 
   const addProduct = async () => {
     if (!newProduct.sku || !newProduct.description || !newProduct.bin) {
-      setMessage('❌ Please fill all fields');
+      setMessage('❌ Please fill SKU, Description, and Bin');
       return;
     }
     
     setSaving(true);
+    const payload = {
+      action: 'ADD_PRODUCT',
+      sku: newProduct.sku.toUpperCase(),
+      description: newProduct.description,
+      quantity: parseInt(newProduct.quantity) || 0,
+      bin: newProduct.bin.toUpperCase()
+    };
+    
+    console.log('Sending payload:', payload);
+    
     try {
       const response = await fetch(API_URL, {
         method: 'POST',
+        mode: 'cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'ADD_PRODUCT',
-          sku: newProduct.sku.toUpperCase(),
-          description: newProduct.description,
-          quantity: parseInt(newProduct.quantity) || 0,
-          bin: newProduct.bin.toUpperCase()
-        })
+        body: JSON.stringify(payload)
       });
       
-      if (response.ok) {
+      console.log('Response status:', response.status);
+      const result = await response.json();
+      console.log('Response data:', result);
+      
+      if (response.ok && result.success !== false) {
         setMessage('✅ Product added successfully!');
         setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
         await loadData();
       } else {
-        setMessage('❌ Failed to add product');
+        setMessage('❌ ' + (result.error || 'Failed to add product'));
+        setDebugInfo(JSON.stringify(result));
       }
     } catch (error) {
-      setMessage('❌ Error adding product');
+      console.error('Add product error:', error);
+      setMessage('❌ Error: ' + error.message);
+      setDebugInfo(error.message);
     } finally {
       setSaving(false);
     }
@@ -109,7 +128,8 @@ function App() {
         setNewBin({ bin_id: '', zone: '' });
         await loadData();
       } else {
-        setMessage('❌ Failed to add bin');
+        const error = await response.text();
+        setMessage('❌ Failed to add bin: ' + error);
       }
     } catch (error) {
       setMessage('❌ Error adding bin');
@@ -234,15 +254,22 @@ function App() {
       </header>
 
       {message && (
-        <div className={`fixed top-20 right-4 z-50 p-3 rounded-lg shadow-lg ${
+        <div className={`fixed top-20 right-4 z-50 p-3 rounded-lg shadow-lg max-w-md ${
           message.includes('✅') ? 'bg-green-500 text-white' : 'bg-red-500 text-white'
         }`}>
           {message}
         </div>
       )}
 
+      {/* Debug info - remove after fixing */}
+      {debugInfo && (
+        <div className="fixed bottom-4 left-4 z-50 p-2 bg-gray-800 text-white text-xs rounded max-w-md">
+          Debug: {debugInfo}
+          <button className="ml-2 text-gray-400" onClick={() => setDebugInfo('')}>×</button>
+        </div>
+      )}
+
       <div className="container mx-auto p-4 max-w-6xl">
-        {/* Navigation */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
           <button onClick={() => setActiveTab('dashboard')} className={`px-6 py-2 rounded-lg font-semibold ${activeTab === 'dashboard' ? 'bg-blue-600 text-white' : 'bg-white'}`}>
             📊 Dashboard
@@ -258,7 +285,6 @@ function App() {
           </button>
         </div>
 
-        {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">Dashboard Overview</h2>
@@ -287,7 +313,6 @@ function App() {
           </div>
         )}
 
-        {/* Stock Tab */}
         {activeTab === 'stock' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">Stock Management</h2>
@@ -297,7 +322,7 @@ function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input 
                   type="text" 
-                  placeholder="SKU" 
+                  placeholder="SKU (e.g., MAT001)" 
                   className="border p-2 rounded" 
                   value={newProduct.sku} 
                   onChange={(e) => setNewProduct({...newProduct, sku: e.target.value.toUpperCase()})} 
@@ -343,11 +368,10 @@ function App() {
                 <button onClick={() => deleteItem(item.id, 'product')} className="text-red-500">🗑️</button>
               </div>
             ))}
-            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No products yet</p>}
+            {stock.length === 0 && <p className="text-gray-500 text-center py-8">No products yet. Add your first product!</p>}
           </div>
         )}
 
-        {/* Bins Tab */}
         {activeTab === 'bins' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">Bin Management</h2>
@@ -357,14 +381,14 @@ function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input 
                   type="text" 
-                  placeholder="Bin ID" 
+                  placeholder="Bin ID (e.g., A-01)" 
                   className="border p-2 rounded" 
                   value={newBin.bin_id} 
                   onChange={(e) => setNewBin({...newBin, bin_id: e.target.value.toUpperCase()})} 
                 />
                 <input 
                   type="text" 
-                  placeholder="Zone" 
+                  placeholder="Zone (e.g., Inbound, Bulk)" 
                   className="border p-2 rounded" 
                   value={newBin.zone} 
                   onChange={(e) => setNewBin({...newBin, zone: e.target.value})} 
@@ -386,16 +410,16 @@ function App() {
                   <div>
                     <p className="font-semibold">{bin.bin_id}</p>
                     <p className="text-sm text-gray-600">Zone: {bin.zone}</p>
+                    <p className="text-xs text-gray-400">Status: {bin.status}</p>
                   </div>
                   <button onClick={() => deleteItem(bin.id, 'bin')} className="text-red-500">🗑️</button>
                 </div>
               ))}
             </div>
-            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet</p>}
+            {bins.length === 0 && <p className="text-gray-500 text-center py-8">No bins yet. Add your first bin!</p>}
           </div>
         )}
 
-        {/* Orders Tab */}
         {activeTab === 'orders' && (
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-2xl font-bold mb-6">Order Management</h2>
@@ -437,6 +461,7 @@ function App() {
                     {order.created_at && (
                       <p className="text-xs text-gray-400">Created: {new Date(order.created_at).toLocaleDateString()}</p>
                     )}
+                    <p className="text-xs text-gray-400">Status: {order.status || 'Open'}</p>
                   </div>
                   <div className="flex gap-2">
                     <div className="relative">
@@ -459,7 +484,7 @@ function App() {
                 </div>
               </div>
             ))}
-            {orders.length === 0 && <p className="text-gray-500 text-center py-8">No orders yet</p>}
+            {orders.length === 0 && <p className="text-gray-500 text-center py-8">No orders yet. Create your first order!</p>}
           </div>
         )}
       </div>
