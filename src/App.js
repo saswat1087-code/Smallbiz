@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnKsWOLbk6H5Z2cq8uOe10EPxlecgxzvscV4Z-Cpu5TI-bk/exec';
+// Updated deployment API URL string connection pointer
+const API_URL = 'https://script.google.com/macros/s/AKfycbxrbJckTbX8uzUCrvNiUXTXMDD6ZVKhvvzXA7oUOCorxT1W-H3PuWfJpnfOE0bsSBjT/exec';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
