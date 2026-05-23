@@ -12,6 +12,7 @@ function App() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [showStatusMenu, setShowStatusMenu] = useState(null);
+  const [showBinSuggestions, setShowBinSuggestions] = useState(false);
 
   const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
   const [selectedFile, setSelectedFile] = useState(null);
@@ -27,7 +28,6 @@ function App() {
 
       const dataArray = Array.isArray(allData) ? allData : [];
 
-      // Maps array elements directly into your single-sheet column data fields
       const stockData = dataArray
         .filter(row => row && row.sku && row.sku.toString().trim() !== '' && !row.order_id)
         .map(row => ({ ...row, id: row.__row_number__ }));
@@ -77,6 +77,22 @@ function App() {
       setMessage('❌ Please specify SKU and Description');
       return;
     }
+    
+    // BIN VALIDATION - Check if bin exists
+    if (!newProduct.bin.trim()) {
+      setMessage('❌ Please enter a Bin Location');
+      return;
+    }
+    
+    const binExists = bins.some(bin => 
+      bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
+    );
+    
+    if (!binExists) {
+      setMessage(`❌ Bin "${newProduct.bin.toUpperCase()}" does not exist. Please add it to Bins tab first.`);
+      return;
+    }
+    
     setSaving(true);
     try {
       let filePayload = {};
@@ -95,7 +111,7 @@ function App() {
         sku: newProduct.sku.trim().toUpperCase(),
         description: newProduct.description.trim(),
         quantity: parseInt(newProduct.quantity, 10) || 0,
-        bin: newProduct.bin.trim().toUpperCase() || 'UNASSIGNED',
+        bin: newProduct.bin.trim().toUpperCase(),
         ...filePayload
       };
 
@@ -329,17 +345,77 @@ function App() {
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="SKU ID" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} />
-                <input type="text" placeholder="Description" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.description} onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} />
-                <input type="number" placeholder="Quantity" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.quantity} onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} />
-                <input type="text" placeholder="Bin Location" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.bin} onChange={(e) => setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() })} />
+                <input 
+                  type="text" 
+                  placeholder="SKU ID" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.sku} 
+                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Description" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.description} 
+                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} 
+                />
+                <input 
+                  type="number" 
+                  placeholder="Quantity" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.quantity} 
+                  onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} 
+                />
+                
+                {/* Bin Input with Validation and Suggestions */}
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    placeholder="Bin Location (must exist in Bins tab)" 
+                    className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
+                    value={newProduct.bin} 
+                    onChange={(e) => {
+                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });
+                      setShowBinSuggestions(true);
+                    }}
+                    onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}
+                    onFocus={() => setShowBinSuggestions(true)}
+                  />
+                  {showBinSuggestions && bins.length > 0 && newProduct.bin && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {bins
+                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))
+                        .slice(0, 5)
+                        .map((bin, idx) => (
+                          <div 
+                            key={idx}
+                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
+                            onMouseDown={() => {
+                              setNewProduct({ ...newProduct, bin: bin.bin_id });
+                              setShowBinSuggestions(false);
+                            }}
+                          >
+                            <span className="font-mono">{bin.bin_id}</span>
+                            <span className="text-xs text-slate-400 ml-2">({bin.zone || 'General'})</span>
+                          </div>
+                        ))}
+                      {bins.filter(b => b.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
+                          ⚠️ Bin "{newProduct.bin}" not found. Please add it in Bins tab first.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 
                 <div className="sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300">
                   <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment (Image, PDF, Document)</label>
                   <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setSelectedFile(e.target.files[0])} />
                 </div>
 
-                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Uploading Payload String...' : '➕ Add Product with Attachment'}</button>
+                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
+                  {saving ? 'Uploading Payload String...' : '➕ Add Product with Attachment'}
+                </button>
               </div>
             </div>
             
@@ -353,7 +429,11 @@ function App() {
                       <span className="text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1">{item.sku}</span>
                     </p>
                     <p className="text-xs text-slate-500 mt-1">
-                      Quantity: <span className="text-slate-800 font-medium">{item.quantity || 0}</span> | Bin: <span className="text-slate-800 font-medium">{item.bin || 'None'}</span>
+                      Quantity: <span className="text-slate-800 font-medium">{item.quantity || 0}</span> | 
+                      Bin: <span className={`font-medium ${bins.some(b => b.bin_id === item.bin) ? 'text-emerald-600' : 'text-rose-500'}`}>{item.bin || 'None'}</span>
+                      {!bins.some(b => b.bin_id === item.bin) && item.bin && (
+                        <span className="ml-2 text-rose-500 text-[10px]">⚠️ Bin not found</span>
+                      )}
                     </p>
                     {item.attachment_url && (
                       <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
