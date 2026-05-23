@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// Your newly updated Google Script Web App URL
+// Your Google Script Web App URL
 const API_URL = 'https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnKsWOLbk6H5Z2cq8uOe10EPxlecgxzvscV4Z-Cpu5TI-bk/exec';
 
 function App() {
@@ -46,7 +46,7 @@ function App() {
       setOrders(ordersData);
     } catch (error) {
       console.error('Error fetching data:', error);
-      setMessage('❌ Failed to synchronize data index');
+      setMessage('❌ Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -54,7 +54,6 @@ function App() {
 
   useEffect(() => {
     loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -64,12 +63,32 @@ function App() {
     }
   }, [message]);
 
-  // Check if SKU exists and return matching product
+  // Find existing product by SKU and Bin
   const findExistingProduct = (sku, bin) => {
     return stock.find(item => 
       item.sku && item.sku.toString().toUpperCase() === sku.toUpperCase() &&
       item.bin && item.bin.toString().toUpperCase() === bin.toUpperCase()
     );
+  };
+
+  // Auto-fetch description when SKU is entered
+  const handleSkuChange = (skuValue) => {
+    const upperSku = skuValue.toUpperCase();
+    setNewProduct({ ...newProduct, sku: upperSku });
+    
+    const existingItem = stock.find(item => 
+      item.sku && item.sku.toString().toUpperCase() === upperSku
+    );
+    
+    if (existingItem && existingItem.description) {
+      setNewProduct(prev => ({ 
+        ...prev, 
+        description: existingItem.description,
+        sku: upperSku
+      }));
+      setMessage(`📋 Auto-filled: ${existingItem.description}`);
+      setTimeout(() => setMessage(''), 2000);
+    }
   };
 
   const convertFileToBase64 = (file) => {
@@ -81,55 +100,37 @@ function App() {
     });
   };
 
-  // Auto-fetch description when SKU is entered
-  const handleSkuChange = (skuValue) => {
-    const upperSku = skuValue.toUpperCase();
-    setNewProduct({ ...newProduct, sku: upperSku });
-    
-    // Find existing product with same SKU (any bin)
-    const existingItem = stock.find(item => 
-      item.sku && item.sku.toString().toUpperCase() === upperSku
-    );
-    
-    if (existingItem && existingItem.description) {
-      setNewProduct(prev => ({ 
-        ...prev, 
-        description: existingItem.description,
-        sku: upperSku
-      }));
-      setMessage(`📋 Auto-filled description: ${existingItem.description}`);
-      setTimeout(() => setMessage(''), 2000);
-    }
-  };
-
   const addProduct = async () => {
-    if (!newProduct.sku.trim() || !newProduct.description.trim()) {
-      setMessage('❌ Please specify SKU and Description');
+    // Validation
+    if (!newProduct.sku.trim()) {
+      setMessage('❌ Please enter SKU');
       return;
     }
-    
-    // BIN VALIDATION - Check if bin exists
+    if (!newProduct.description.trim()) {
+      setMessage('❌ Please enter Description');
+      return;
+    }
     if (!newProduct.bin.trim()) {
-      setMessage('❌ Please enter a Bin Location');
+      setMessage('❌ Please enter Bin Location');
       return;
     }
     
+    // Check if bin exists
     const binExists = bins.some(bin => 
       bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
     );
     
     if (!binExists) {
-      setMessage(`❌ Bin "${newProduct.bin.toUpperCase()}" does not exist. Please add it to Bins tab first.`);
+      setMessage(`❌ Bin "${newProduct.bin.toUpperCase()}" not found. Add it in Bins tab first.`);
       return;
     }
     
-    // SKU VALIDATION - Check if product exists in same bin
     const existingProduct = findExistingProduct(newProduct.sku, newProduct.bin);
+    const quantityToAdd = parseInt(newProduct.quantity, 10) || 0;
     
     setSaving(true);
     try {
       let filePayload = {};
-      
       if (selectedFile) {
         const base64String = await convertFileToBase64(selectedFile);
         filePayload = {
@@ -139,58 +140,58 @@ function App() {
         };
       }
 
-      let payload;
-      
+      let res;
       if (existingProduct && existingProduct.id) {
-        // UPDATE EXISTING PRODUCT - Add to existing quantity
-        const newQuantity = (parseInt(existingProduct.quantity, 10) || 0) + (parseInt(newProduct.quantity, 10) || 0);
+        // Update existing - add quantity
+        const newQuantity = (parseInt(existingProduct.quantity, 10) || 0) + quantityToAdd;
+        res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'UPDATE_PRODUCT',
+            rowNumber: parseInt(existingProduct.id, 10),
+            sku: newProduct.sku.trim().toUpperCase(),
+            description: newProduct.description.trim(),
+            quantity: newQuantity,
+            bin: newProduct.bin.trim().toUpperCase(),
+            ...filePayload
+          })
+        });
         
-        payload = {
-          action: 'UPDATE_PRODUCT',
-          rowNumber: parseInt(existingProduct.id, 10),
-          sku: newProduct.sku.trim().toUpperCase(),
-          description: newProduct.description.trim(),
-          quantity: newQuantity,
-          bin: newProduct.bin.trim().toUpperCase(),
-          ...filePayload
-        };
+        if (res.ok) {
+          setMessage(`✅ Stock updated! Added ${quantityToAdd} units. New total: ${newQuantity}`);
+        }
       } else {
-        // CREATE NEW PRODUCT
-        payload = {
-          action: 'ADD_PRODUCT',
-          sku: newProduct.sku.trim().toUpperCase(),
-          description: newProduct.description.trim(),
-          quantity: parseInt(newProduct.quantity, 10) || 0,
-          bin: newProduct.bin.trim().toUpperCase(),
-          ...filePayload
-        };
+        // Create new product
+        res = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({
+            action: 'ADD_PRODUCT',
+            sku: newProduct.sku.trim().toUpperCase(),
+            description: newProduct.description.trim(),
+            quantity: quantityToAdd,
+            bin: newProduct.bin.trim().toUpperCase(),
+            ...filePayload
+          })
+        });
+        
+        if (res.ok) {
+          setMessage(`✅ New product "${newProduct.sku}" added successfully!`);
+        }
       }
-
-      const res = await fetch(API_URL, {
-        redirect: 'follow', 
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify(payload)
-      });
       
-      if (!res.ok) throw new Error();
-      
-      if (existingProduct) {
-        setMessage(`✅ Stock updated! Added ${parseInt(newProduct.quantity, 10) || 0} units to ${newProduct.sku}. New total: ${(parseInt(existingProduct.quantity, 10) || 0) + (parseInt(newProduct.quantity, 10) || 0)}`);
-      } else {
-        setMessage('✅ New product added successfully!');
-      }
+      if (!res.ok) throw new Error('API call failed');
       
       setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
       setSelectedFile(null);
-      
       const fileInput = document.getElementById('product-file-attachment');
       if (fileInput) fileInput.value = '';
-
       await loadData();
+      
     } catch (err) {
       console.error('Error:', err);
-      setMessage('❌ Failed to save product data');
+      setMessage('❌ Failed to save product');
     } finally {
       setSaving(false);
     }
@@ -198,13 +199,12 @@ function App() {
 
   const addBin = async () => {
     if (!newBin.bin_id.trim()) {
-      setMessage('❌ Please supply a valid Bin ID');
+      setMessage('❌ Please enter Bin ID');
       return;
     }
     setSaving(true);
     try {
       const res = await fetch(API_URL, {
-        redirect: 'follow',
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -216,10 +216,10 @@ function App() {
       });
       if (!res.ok) throw new Error();
       setNewBin({ bin_id: '', zone: '' });
-      setMessage('✅ Bin mapped successfully!');
+      setMessage('✅ Bin added successfully!');
       await loadData();
     } catch {
-      setMessage('❌ Failed to provision new bin');
+      setMessage('❌ Failed to add bin');
     } finally {
       setSaving(false);
     }
@@ -227,13 +227,12 @@ function App() {
 
   const addOrder = async () => {
     if (!newOrder.order_id.trim() || !newOrder.customer.trim()) {
-      setMessage('❌ Please input Order ID and Customer Name');
+      setMessage('❌ Please enter Order ID and Customer');
       return;
     }
     setSaving(true);
     try {
       const res = await fetch(API_URL, {
-        redirect: 'follow',
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
@@ -246,10 +245,10 @@ function App() {
       });
       if (!res.ok) throw new Error();
       setNewOrder({ order_id: '', customer: '' });
-      setMessage('✅ Order generated successfully!');
+      setMessage('✅ Order created successfully!');
       await loadData();
     } catch {
-      setMessage('❌ Failed to stage order');
+      setMessage('❌ Failed to create order');
     } finally {
       setSaving(false);
     }
@@ -257,13 +256,12 @@ function App() {
 
   const updateOrderStatus = async (rowId, orderId, newStatus) => {
     if (!rowId) {
-      setMessage('❌ Target ID missing');
+      setMessage('❌ Missing order reference');
       return;
     }
     setSaving(true);
     try {
       const res = await fetch(API_URL, {
-        redirect: 'follow',
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ 
@@ -273,26 +271,22 @@ function App() {
         })
       });
       if (!res.ok) throw new Error();
-      setMessage(`✅ Order ${orderId} status changed to: ${newStatus}`);
+      setMessage(`✅ Order ${orderId} status: ${newStatus}`);
       await loadData();
       setShowStatusMenu(null);
     } catch {
-      setMessage('❌ Failed to change order status');
+      setMessage('❌ Failed to update status');
     } finally {
       setSaving(false);
     }
   };
 
   const executeItemRemoval = async (rowId, label) => {
-    if (!rowId) {
-      setMessage('❌ Missing reference coordinate');
-      return;
-    }
-    if (!window.confirm(`Permanently delete record: ${label}?`)) return;
+    if (!rowId) return;
+    if (!window.confirm(`Delete ${label}?`)) return;
     setSaving(true);
     try {
       const res = await fetch(API_URL, { 
-        redirect: 'follow',
         method: 'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ 
@@ -301,10 +295,10 @@ function App() {
         })
       });
       if (!res.ok) throw new Error();
-      setMessage(`✅ Record removed successfully.`);
+      setMessage(`✅ Deleted successfully`);
       await loadData();
     } catch {
-      setMessage('❌ Delete request failed');
+      setMessage('❌ Delete failed');
     } finally {
       setSaving(false);
     }
@@ -312,51 +306,56 @@ function App() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'Open': return 'bg-amber-100 text-amber-900 border border-amber-300';
-      case 'In Transit': return 'bg-sky-100 text-sky-900 border border-sky-300';
-      case 'Closed': return 'bg-emerald-100 text-emerald-900 border border-emerald-300';
-      default: return 'bg-slate-100 text-slate-800 border border-slate-300';
+      case 'Open': return 'bg-amber-100 text-amber-900';
+      case 'In Transit': return 'bg-sky-100 text-sky-900';
+      case 'Closed': return 'bg-emerald-100 text-emerald-900';
+      default: return 'bg-slate-100 text-slate-800';
     }
   };
+
+  const isExistingProduct = findExistingProduct(newProduct.sku, newProduct.bin);
+  const buttonText = saving ? 'Processing...' : (isExistingProduct ? '➕ Update Stock (Add to existing)' : '➕ Add New Product');
 
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="text-center">
           <div className="text-4xl mb-3">📊</div>
-          <div className="text-lg font-medium text-slate-600">Loading WMS Data Matrix...</div>
+          <div className="text-lg font-medium text-slate-600">Loading WMS...</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+    <div className="min-h-screen bg-slate-50">
       <header className="bg-slate-900 text-white shadow-md">
-        <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div className="flex items-center gap-3">
-            <span className="text-3xl">📦</span>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight">SmallBiz WMS</h1>
-              <p className="text-xs text-slate-400">Powered by Google Scripts Deployment</p>
+        <div className="max-w-6xl mx-auto px-4 py-5">
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-3xl">📦</span>
+              <div>
+                <h1 className="text-xl font-bold">SmallBiz WMS</h1>
+                <p className="text-xs text-slate-400">Powered by Google Sheets</p>
+              </div>
             </div>
-          </div>
-          <div className="text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded border border-slate-700">
-            System Online
+            <div className="text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded">
+              System Online
+            </div>
           </div>
         </div>
       </header>
 
       {message && (
-        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl text-sm font-medium ${
-          message.includes('✅') || message.includes('📋') ? 'bg-slate-900 text-emerald-400 border border-emerald-500/30' : 'bg-slate-900 text-rose-400 border border-rose-500/30'
+        <div className={`fixed top-4 right-4 z-50 p-3 rounded-xl shadow-lg text-sm font-medium ${
+          message.includes('✅') || message.includes('📋') ? 'bg-slate-800 text-emerald-400' : 'bg-slate-800 text-rose-400'
         }`}>
           {message}
         </div>
       )}
 
       <main className="container mx-auto p-4 max-w-6xl mt-4">
-        <nav className="flex gap-1.5 mb-6 bg-slate-200/60 p-1.5 rounded-xl max-w-md">
+        <nav className="flex gap-2 mb-6 bg-white p-1 rounded-xl shadow-sm max-w-md">
           {[
             { id: 'dashboard', label: 'Dashboard', icon: '📊' },
             { id: 'stock', label: 'Stock', icon: '📦' },
@@ -366,8 +365,8 @@ function App() {
             <button
               key={tab.id}
               onClick={() => { setActiveTab(tab.id); setShowStatusMenu(null); }}
-              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:bg-white/50'
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                activeTab === tab.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'
               }`}
             >
               <span>{tab.icon}</span>
@@ -377,260 +376,158 @@ function App() {
         </nav>
 
         {activeTab === 'dashboard' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-5 text-slate-800">Operational Aggregates</h2>
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-5">Dashboard</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {[
-                { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦' },
-                { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️' },
-                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️' },
-                { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋' }
-              ].map((card, idx) => (
-                <div key={idx} className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm`}>
-                  <div className="text-2xl mb-1 opacity-90">{card.icon}</div>
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-white/80">{card.title}</h3>
-                  <p className="text-2xl font-black mt-1">{card.count}</p>
-                </div>
-              ))}
+              <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl p-5 text-white">
+                <div className="text-2xl mb-1">📦</div>
+                <h3 className="text-xs uppercase tracking-wider opacity-80">Total Stock</h3>
+                <p className="text-2xl font-bold">{stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0)}</p>
+              </div>
+              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-xl p-5 text-white">
+                <div className="text-2xl mb-1">🏷️</div>
+                <h3 className="text-xs uppercase tracking-wider opacity-80">SKUs</h3>
+                <p className="text-2xl font-bold">{stock.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-violet-500 to-violet-600 rounded-xl p-5 text-white">
+                <div className="text-2xl mb-1">🗑️</div>
+                <h3 className="text-xs uppercase tracking-wider opacity-80">Bins</h3>
+                <p className="text-2xl font-bold">{bins.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-amber-500 to-amber-600 rounded-xl p-5 text-white">
+                <div className="text-2xl mb-1">📋</div>
+                <h3 className="text-xs uppercase tracking-wider opacity-80">Orders</h3>
+                <p className="text-2xl font-bold">{orders.length}</p>
+              </div>
             </div>
           </div>
         )}
 
         {activeTab === 'stock' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4 text-slate-800">Inventory Index</h2>
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product / Update Stock</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* SKU Input with Auto-suggestion */}
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    placeholder="SKU ID (e.g., MAT001)" 
-                    className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
-                    value={newProduct.sku} 
-                    onChange={(e) => handleSkuChange(e.target.value)}
-                    onFocus={() => setShowSkuSuggestions(true)}
-                    onBlur={() => setTimeout(() => setShowSkuSuggestions(false), 200)}
-                  />
-                  {showSkuSuggestions && stock.length > 0 && newProduct.sku && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                      {stock
-                        .filter(item => item.sku && item.sku.toUpperCase().includes(newProduct.sku.toUpperCase()))
-                        .slice(0, 5)
-                        .map((item, idx) => (
-                          <div 
-                            key={idx}
-                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
-                            onMouseDown={() => {
-                              handleSkuChange(item.sku);
-                              setNewProduct(prev => ({ 
-                                ...prev, 
-                                bin: item.bin || '',
-                                quantity: ''
-                              }));
-                              setShowSkuSuggestions(false);
-                            }}
-                          >
-                            <div className="font-mono font-medium">{item.sku}</div>
-                            <div className="text-xs text-slate-500">{item.description}</div>
-                            <div className="text-xs text-slate-400">Bin: {item.bin} | Stock: {item.quantity}</div>
-                          </div>
-                        ))}
-                    </div>
-                  )}
-                </div>
-                
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-4">Stock Management</h2>
+            
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl">
+              <h3 className="font-semibold text-sm mb-3">Add / Update Stock</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <input 
                   type="text" 
-                  placeholder="Description (auto-fetched if SKU exists)" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  placeholder="SKU (e.g., MAT001)" 
+                  className="border p-2 rounded-lg"
+                  value={newProduct.sku} 
+                  onChange={(e) => handleSkuChange(e.target.value)}
+                />
+                <input 
+                  type="text" 
+                  placeholder="Description" 
+                  className="border p-2 rounded-lg"
                   value={newProduct.description} 
                   onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} 
                 />
                 <input 
                   type="number" 
-                  placeholder="Quantity to add" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  placeholder="Quantity" 
+                  className="border p-2 rounded-lg"
                   value={newProduct.quantity} 
                   onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} 
                 />
-                
-                {/* Bin Input with Validation and Suggestions */}
-                <div className="relative">
-                  <input 
-                    type="text" 
-                    placeholder="Bin Location (must exist in Bins tab)" 
-                    className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
-                    value={newProduct.bin} 
-                    onChange={(e) => {
-                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });
-                      setShowBinSuggestions(true);
-                    }}
-                    onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}
-                    onFocus={() => setShowBinSuggestions(true)}
-                  />
-                  {showBinSuggestions && bins.length > 0 && newProduct.bin && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                      {bins
-                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))
-                        .slice(0, 5)
-                        .map((bin, idx) => (
-                          <div 
-                            key={idx}
-                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
-                            onMouseDown={() => {
-                              setNewProduct({ ...newProduct, bin: bin.bin_id });
-                              setShowBinSuggestions(false);
-                            }}
-                          >
-                            <span className="font-mono">{bin.bin_id}</span>
-                            <span className="text-xs text-slate-400 ml-2">({bin.zone || 'General'})</span>
-                          </div>
-                        ))}
-                      {bins.filter(b => b.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
-                          ⚠️ Bin "{newProduct.bin}" not found. Please add it in Bins tab first.
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-                
-                <div className="sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300">
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment (Image, PDF, Document)</label>
-                  <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setSelectedFile(e.target.files[0])} />
-                </div>
-
-                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
-                  {saving ? 'Processing...' : (findExistingProduct(newProduct.sku, newProduct.bin) ? '➕ Update Stock (Add to existing)' : '➕ Add New Product')}
+                <input 
+                  type="text" 
+                  placeholder="Bin Location" 
+                  className="border p-2 rounded-lg"
+                  value={newProduct.bin} 
+                  onChange={(e) => setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() })} 
+                />
+                <button onClick={addProduct} disabled={saving} className="md:col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition-all">
+                  {buttonText}
                 </button>
               </div>
+              {isExistingProduct && newProduct.sku && newProduct.bin && (
+                <div className="mt-3 text-xs text-blue-600 bg-blue-50 p-2 rounded">
+                  ℹ️ SKU "{newProduct.sku}" already exists in bin "{newProduct.bin}". Stock will be added to existing entry.
+                </div>
+              )}
             </div>
             
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Stock</h3>
-            <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
-              {stock.map((item, index) => (
-                <div key={index} className="py-3 flex justify-between items-center group">
+            <h3 className="font-semibold text-sm mb-3">Current Stock</h3>
+            <div className="divide-y max-h-96 overflow-y-auto">
+              {stock.map((item, idx) => (
+                <div key={idx} className="py-3 flex justify-between items-center">
                   <div>
-                    <p className="font-semibold text-sm text-slate-800">
-                      {item.description || 'Unnamed'}{' '}
-                      <span className="text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1">{item.sku}</span>
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Quantity: <span className="text-slate-800 font-medium">{item.quantity || 0}</span> | 
-                      Bin: <span className={`font-medium ${bins.some(b => b.bin_id === item.bin) ? 'text-emerald-600' : 'text-rose-500'}`}>{item.bin || 'None'}</span>
-                      {!bins.some(b => b.bin_id === item.bin) && item.bin && (
-                        <span className="ml-2 text-rose-500 text-[10px]">⚠️ Bin not found</span>
-                      )}
-                    </p>
-                    {item.attachment_url && (
-                      <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
-                        🔗 {item.attachment_name || 'View Attached Document'}
-                      </a>
-                    )}
+                    <p className="font-semibold text-sm">{item.description} <span className="text-xs text-slate-400">({item.sku})</span></p>
+                    <p className="text-xs text-slate-500">Qty: {item.quantity} | Bin: {item.bin}</p>
                   </div>
-                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
+                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-red-500">🗑️</button>
                 </div>
               ))}
-              {stock.length === 0 && <p className="text-slate-400 text-sm text-center py-6">No stock records found.</p>}
+              {stock.length === 0 && <p className="text-slate-400 text-center py-6">No stock records</p>}
             </div>
           </div>
         )}
 
         {activeTab === 'bins' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4 text-slate-800">Bin Locations</h2>
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Bin</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="Bin ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
-                <input type="text" placeholder="Zone Matrix" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />
-                <button onClick={addBin} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Deploying...' : '➕ Add Bin'}</button>
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-4">Bin Management</h2>
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl">
+              <h3 className="font-semibold text-sm mb-3">Add New Bin</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input type="text" placeholder="Bin ID" className="border p-2 rounded-lg" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
+                <input type="text" placeholder="Zone" className="border p-2 rounded-lg" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />
+                <button onClick={addBin} disabled={saving} className="md:col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg">➕ Add Bin</button>
               </div>
             </div>
-
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Bins</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
-              {bins.map((bin, index) => (
-                <div key={index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start">
+            <h3 className="font-semibold text-sm mb-3">Current Bins</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
+              {bins.map((bin, idx) => (
+                <div key={idx} className="border p-3 rounded-lg flex justify-between">
                   <div>
-                    <p className="font-bold font-mono text-slate-800 text-base">{bin.bin_id}</p>
-                    <p className="text-xs text-slate-500 mt-1">Zone: <span className="font-medium text-slate-700">{bin.zone || 'General'}</span></p>
-                    <p className="text-xs text-slate-500">Status: <span className="font-medium text-emerald-600">{bin.status || 'Available'}</span></p>
+                    <p className="font-mono font-bold">{bin.bin_id}</p>
+                    <p className="text-xs text-slate-500">Zone: {bin.zone || 'General'}</p>
                   </div>
-                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5 transition-all">🗑️</button>
+                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-red-500">🗑️</button>
                 </div>
               ))}
-              {bins.length === 0 && <p className="col-span-full text-slate-400 text-sm text-center py-6">No bins provisioned.</p>}
             </div>
           </div>
         )}
 
         {activeTab === 'orders' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
-            <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Create New Order</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="Order ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.order_id} onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value.toUpperCase() })} />
-                <input type="text" placeholder="Customer Name" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.customer} onChange={(e) => setNewOrder({ ...newOrder, customer: e.target.value })} />
-                <button onClick={addOrder} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Creating...' : '➕ Create Order'}</button>
+          <div className="bg-white rounded-2xl shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-4">Order Management</h2>
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl">
+              <h3 className="font-semibold text-sm mb-3">Create Order</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <input type="text" placeholder="Order ID" className="border p-2 rounded-lg" value={newOrder.order_id} onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value.toUpperCase() })} />
+                <input type="text" placeholder="Customer" className="border p-2 rounded-lg" value={newOrder.customer} onChange={(e) => setNewOrder({ ...newOrder, customer: e.target.value })} />
+                <button onClick={addOrder} disabled={saving} className="md:col-span-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg">➕ Create Order</button>
               </div>
             </div>
-
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">All Orders</h3>
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-              {orders.map((order, index) => (
-                <div key={index} className="border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+            <h3 className="font-semibold text-sm mb-3">All Orders</h3>
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {orders.map((order, idx) => (
+                <div key={idx} className="border p-3 rounded-lg flex justify-between items-center">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold font-mono text-slate-800">{order.order_id}</p>
-                      {order.created_at && (
-                        <span className="text-[10px] text-slate-400 font-normal bg-slate-100 px-1.5 py-0.5 rounded">
-                          {new Date(order.created_at).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">Customer: <span className="font-medium text-slate-700">{order.customer}</span></p>
+                    <p className="font-semibold">{order.order_id}</p>
+                    <p className="text-xs text-slate-500">{order.customer}</p>
                   </div>
-                  
-                  <div className="flex items-center gap-2 justify-end">
-                    <div className="relative">
-                      <button 
-                        onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)} 
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${getStatusColor(order.status || 'Open')}`}
-                      >
-                        <span>{order.status || 'Open'}</span>
-                        <span className="text-[10px] opacity-60">▼</span>
-                      </button>
-                      
-                      {showStatusMenu === order.order_id && (
-                        <div className="absolute right-0 mt-2 w-40 bg-slate-900 text-slate-200 rounded-xl shadow-xl border border-slate-800 z-30 overflow-hidden">
-                          <div className="p-1 text-xs">
-                            {[
-                              { label: '📋 Open', value: 'Open' },
-                              { label: '🚚 In Transit', value: 'In Transit' },
-                              { label: '✅ Closed', value: 'Closed' }
-                            ].map(opt => (
-                              <button 
-                                key={opt.value}
-                                onClick={() => updateOrderStatus(order.id, order.order_id, opt.value)} 
-                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors"
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <button onClick={() => executeItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)}
+                      className={`px-2 py-1 rounded text-xs font-medium ${getStatusColor(order.status || 'Open')}`}
+                    >
+                      {order.status || 'Open'} ▼
+                    </button>
+                    {showStatusMenu === order.order_id && (
+                      <div className="absolute right-0 mt-8 bg-white shadow-lg border rounded-lg z-10">
+                        {['Open', 'In Transit', 'Closed'].map(s => (
+                          <button key={s} onClick={() => updateOrderStatus(order.id, order.order_id, s)} className="block w-full text-left px-3 py-1 text-sm hover:bg-slate-100">{s}</button>
+                        ))}
+                      </div>
+                    )}
+                    <button onClick={() => executeItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-red-500">🗑️</button>
                   </div>
                 </div>
               ))}
-              {orders.length === 0 && <p className="text-slate-400 text-sm text-center py-8">No orders found.</p>}
             </div>
           </div>
         )}
