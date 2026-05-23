@@ -1,37 +1,579 @@
-curl https://api.x.ai/v1/responses \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $XAI_API_KEY" \
-  -d '{
-  "model": "grok-4.3",
-  "max_output_tokens": 1000000,
-  "reasoning": {
-    "effort": "low"
-  },
-  "stream": true,
-  "input": [
-    {
-      "role": "user",
-      "content": "import React, { useState, useEffect } from '\''react'\'';\n\n// Your newly updated Google Script Web App URL\nconst API_URL = '\''https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnKsWOLbk6H5Z2cq8uOe10EPxlecgxzvscV4Z-Cpu5TI-bk/exec'\'';\n\nfunction App() {\n  const [activeTab, setActiveTab] = useState('\''dashboard'\'');\n  const [stock, setStock] = useState([]);\n  const [bins, setBins] = useState([]);\n  const [orders, setOrders] = useState([]);\n  const [loading, setLoading] = useState(true);\n  const [saving, setSaving] = useState(false);\n  const [message, setMessage] = useState('\'''\'');\n  const [showStatusMenu, setShowStatusMenu] = useState(null);\n  const [showBinSuggestions, setShowBinSuggestions] = useState(false);\n\n  const [newProduct, setNewProduct] = useState({ sku: '\'''\'', description: '\'''\'', quantity: '\'''\'', bin: '\'''\'' });\n  const [selectedFile, setSelectedFile] = useState(null);\n  const [newBin, setNewBin] = useState({ bin_id: '\'''\'', zone: '\'''\'' });\n  const [newOrder, setNewOrder] = useState({ order_id: '\'''\'', customer: '\'''\'' });\n\n  const loadData = async () => {\n    try {\n      setLoading(true);\n      const response = await fetch(API_URL);\n      if (!response.ok) throw new Error('\''Network failure'\'');\n      const allData = await response.json();\n\n      const dataArray = Array.isArray(allData) ? allData : [];\n\n      const stockData = dataArray\n        .filter(row => row && row.sku && row.sku.toString().trim() !== '\'''\'' && !row.order_id)\n        .map(row => ({ ...row, id: row.__row_number__ }));\n        \n      const binsData = dataArray\n        .filter(row => row && row.bin_id && row.bin_id.toString().trim() !== '\'''\'')\n        .map(row => ({ ...row, id: row.__row_number__ }));\n        \n      const ordersData = dataArray\n        .filter(row => row && row.order_id && row.order_id.toString().trim() !== '\'''\'')\n        .map(row => ({ ...row, id: row.__row_number__ }));\n\n      setStock(stockData);\n      setBins(binsData);\n      setOrders(ordersData);\n    } catch (error) {\n      console.error('\''Error fetching data:'\'', error);\n      setMessage('\''❌ Failed to synchronize data index'\'');\n    } finally {\n      setLoading(false);\n    }\n  };\n\n  useEffect(() => {\n    loadData();\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => {\n    if (message) {\n      const timer = setTimeout(() => setMessage('\'''\''), 4000);\n      return () => clearTimeout(timer);\n    }\n  }, [message]);\n\n  const convertFileToBase64 = (file) => {\n    return new Promise((resolve, reject) => {\n      const reader = new FileReader();\n      reader.readAsDataURL(file);\n      reader.onload = () => resolve(reader.result);\n      reader.onerror = (error) => reject(error);\n    });\n  };\n\n  const addProduct = async () => {\n    if (!newProduct.sku.trim() || !newProduct.description.trim()) {\n      setMessage('\''❌ Please specify SKU and Description'\'');\n      return;\n    }\n    \n    // BIN VALIDATION - Check if bin exists\n    if (!newProduct.bin.trim()) {\n      setMessage('\''❌ Please enter a Bin Location'\'');\n      return;\n    }\n    \n    const binExists = bins.some(bin => \n      bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()\n    );\n    \n    if (!binExists) {\n      setMessage(`❌ Bin \"${newProduct.bin.toUpperCase()}\" does not exist. Please add it to Bins tab first.`);\n      return;\n    }\n    \n    setSaving(true);\n    try {\n      let filePayload = {};\n      \n      if (selectedFile) {\n        const base64String = await convertFileToBase64(selectedFile);\n        filePayload = {\n          fileData: base64String,\n          fileName: selectedFile.name,\n          fileType: selectedFile.type\n        };\n      }\n\n      const payload = {\n        action: '\''ADD_PRODUCT'\'',\n        sku: newProduct.sku.trim().toUpperCase(),\n        description: newProduct.description.trim(),\n        quantity: parseInt(newProduct.quantity, 10) || 0,\n        bin: newProduct.bin.trim().toUpperCase(),\n        ...filePayload\n      };\n\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'', \n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify(payload)\n      });\n      \n      if (!res.ok) throw new Error();\n      \n      setNewProduct({ sku: '\'''\'', description: '\'''\'', quantity: '\'''\'', bin: '\'''\'' });\n      setSelectedFile(null);\n      \n      const fileInput = document.getElementById('\''product-file-attachment'\'');\n      if (fileInput) fileInput.value = '\'''\'';\n\n      setMessage('\''✅ Product and Attachment added successfully!'\'');\n      await loadData();\n    } catch (err) {\n      setMessage('\''❌ Failed to save product data'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const addBin = async () => {\n    if (!newBin.bin_id.trim()) {\n      setMessage('\''❌ Please supply a valid Bin ID'\'');\n      return;\n    }\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({\n          action: '\''ADD_BIN'\'',\n          bin_id: newBin.bin_id.trim().toUpperCase(),\n          zone: newBin.zone.trim() || '\''General'\'',\n          status: '\''Available'\''\n        })\n      });\n      if (!res.ok) throw new Error();\n      setNewBin({ bin_id: '\'''\'', zone: '\'''\'' });\n      setMessage('\''✅ Bin mapped successfully!'\'');\n      await loadData();\n    } catch {\n      setMessage('\''❌ Failed to provision new bin'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const addOrder = async () => {\n    if (!newOrder.order_id.trim() || !newOrder.customer.trim()) {\n      setMessage('\''❌ Please input Order ID and Customer Name'\'');\n      return;\n    }\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({\n          action: '\''ADD_ORDER'\'',\n          order_id: newOrder.order_id.trim().toUpperCase(),\n          customer: newOrder.customer.trim(),\n          status: '\''Open'\'',\n          created_at: new Date().toISOString()\n        })\n      });\n      if (!res.ok) throw new Error();\n      setNewOrder({ order_id: '\'''\'', customer: '\'''\'' });\n      setMessage('\''✅ Order generated successfully!'\'');\n      await loadData();\n    } catch {\n      setMessage('\''❌ Failed to stage order'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const updateOrderStatus = async (rowId, orderId, newStatus) => {\n    if (!rowId) {\n      setMessage('\''❌ Target ID missing'\'');\n      return;\n    }\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({ \n          action: '\''UPDATE_STATUS'\'', \n          rowNumber: parseInt(rowId, 10), \n          status: newStatus \n        })\n      });\n      if (!res.ok) throw new Error();\n      setMessage(`✅ Order ${orderId} status changed to: ${newStatus}`);\n      await loadData();\n      setShowStatusMenu(null);\n    } catch {\n      setMessage('\''❌ Failed to change order status'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const executeItemRemoval = async (rowId, label) => {\n    if (!rowId) {\n      setMessage('\''❌ Missing reference coordinate'\'');\n      return;\n    }\n    if (!window.confirm(`Permanently delete record: ${label}?`)) return;\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, { \n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({ \n          action: '\''DELETE_ROW'\'', \n          rowNumber: parseInt(rowId, 10) \n        })\n      });\n      if (!res.ok) throw new Error();\n      setMessage(`✅ Record removed successfully.`);\n      await loadData();\n    } catch {\n      setMessage('\''❌ Delete request failed'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const getStatusColor = (status) => {\n    switch (status) {\n      case '\''Open'\'': return '\''bg-amber-100 text-amber-900 border border-amber-300'\'';\n      case '\''In Transit'\'': return '\''bg-sky-100 text-sky-900 border border-sky-300'\'';\n      case '\''Closed'\'': return '\''bg-emerald-100 text-emerald-900 border border-emerald-300'\'';\n      default: return '\''bg-slate-100 text-slate-800 border border-slate-300'\'';\n    }\n  };\n\n  if (loading) {\n    return (\n      <div className=\"min-h-screen bg-slate-50 flex items-center justify-center\">\n        <div className=\"text-center\">\n          <div className=\"text-4xl mb-3\">📊</div>\n          <div className=\"text-lg font-medium text-slate-600\">Loading WMS Data Matrix...</div>\n        </div>\n      </div>\n    );\n  }\n\n  return (\n    <div className=\"min-h-screen bg-slate-50 font-sans text-slate-900\">\n      <header className=\"bg-slate-900 text-white shadow-md\">\n        <div className=\"max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2\">\n          <div className=\"flex items-center gap-3\">\n            <span className=\"text-3xl\">📦</span>\n            <div>\n              <h1 className=\"text-xl font-bold tracking-tight\">SmallBiz WMS</h1>\n              <p className=\"text-xs text-slate-400\">Powered by Google Scripts Deployment</p>\n            </div>\n          </div>\n          <div className=\"text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded border border-slate-700\">\n            System Online\n          </div>\n        </div>\n      </header>\n\n      {message && (\n        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl text-sm font-medium ${\n          message.includes('\''✅'\'') ? '\''bg-slate-900 text-emerald-400 border border-emerald-500/30'\'' : '\''bg-slate-900 text-rose-400 border border-rose-500/30'\''\n        }`}>\n          {message}\n        </div>\n      )}\n\n      <main className=\"container mx-auto p-4 max-w-6xl mt-4\">\n        <nav className=\"flex gap-1.5 mb-6 bg-slate-200/60 p-1.5 rounded-xl max-w-md\">\n          {[\n            { id: '\''dashboard'\'', label: '\''Dashboard'\'', icon: '\''📊'\'' },\n            { id: '\''stock'\'', label: '\''Stock'\'', icon: '\''📦'\'' },\n            { id: '\''bins'\'', label: '\''Bins'\'', icon: '\''🗑️'\'' },\n            { id: '\''orders'\'', label: '\''Orders'\'', icon: '\''📝'\'' }\n          ].map(tab => (\n            <button\n              key={tab.id}\n              onClick={() => { setActiveTab(tab.id); setShowStatusMenu(null); }}\n              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${\n                activeTab === tab.id ? '\''bg-white text-blue-600 shadow-sm font-semibold'\'' : '\''text-slate-600 hover:bg-white/50'\''\n              }`}\n            >\n              <span>{tab.icon}</span>\n              <span className=\"hidden sm:inline\">{tab.label}</span>\n            </button>\n          ))}\n        </nav>\n\n        {activeTab === '\''dashboard'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-5 text-slate-800\">Operational Aggregates</h2>\n            <div className=\"grid grid-cols-2 md:grid-cols-4 gap-4\">\n              {[\n                { title: '\''Units in Stock'\'', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: '\''from-blue-500 to-indigo-600'\'', icon: '\''📦'\'' },\n                { title: '\''Unique SKUs'\'', count: stock.length, color: '\''from-emerald-500 to-teal-600'\'', icon: '\''🏷️'\'' },\n                { title: '\''Allocated Locations'\'', count: bins.length, color: '\''from-violet-500 to-purple-600'\'', icon: '\''🗑️'\'' },\n                { title: '\''Active Pipelines'\'', count: orders.length, color: '\''from-amber-500 to-orange-600'\'', icon: '\''📋'\'' }\n              ].map((card, idx) => (\n                <div key={idx} className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm`}>\n                  <div className=\"text-2xl mb-1 opacity-90\">{card.icon}</div>\n                  <h3 className=\"text-xs font-medium uppercase tracking-wider text-white/80\">{card.title}</h3>\n                  <p className=\"text-2xl font-black mt-1\">{card.count}</p>\n                </div>\n              ))}\n            </div>\n          </div>\n        )}\n\n        {activeTab === '\''stock'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-4 text-slate-800\">Inventory Index</h2>\n            <div className=\"mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100\">\n              <h3 className=\"font-semibold text-sm mb-3 text-slate-700\">Add New Product</h3>\n              <div className=\"grid grid-cols-1 sm:grid-cols-2 gap-3\">\n                <input \n                  type=\"text\" \n                  placeholder=\"SKU ID\" \n                  className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white\" \n                  value={newProduct.sku} \n                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} \n                />\n                <input \n                  type=\"text\" \n                  placeholder=\"Description\" \n                  className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white\" \n                  value={newProduct.description} \n                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} \n                />\n                <input \n                  type=\"number\" \n                  placeholder=\"Quantity\" \n                  className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white\" \n                  value={newProduct.quantity} \n                  onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} \n                />\n                \n                {/* Bin Input with Validation and Suggestions */}\n                <div className=\"relative\">\n                  <input \n                    type=\"text\" \n                    placeholder=\"Bin Location (must exist in Bins tab)\" \n                    className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white w-full\" \n                    value={newProduct.bin} \n                    onChange={(e) => {\n                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });\n                      setShowBinSuggestions(true);\n                    }}\n                    onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}\n                    onFocus={() => setShowBinSuggestions(true)}\n                  />\n                  {showBinSuggestions && bins.length > 0 && newProduct.bin && (\n                    <div className=\"absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto\">\n                      {bins\n                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))\n                        .slice(0, 5)\n                        .map((bin, idx) => (\n                          <div \n                            key={idx}\n                            className=\"px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0\"\n                            onMouseDown={() => {\n                              setNewProduct({ ...newProduct, bin: bin.bin_id });\n                              setShowBinSuggestions(false);\n                            }}\n                          >\n                            <span className=\"font-mono\">{bin.bin_id}</span>\n                            <span className=\"text-xs text-slate-400 ml-2\">({bin.zone || '\''General'\''})</span>\n                          </div>\n                        ))}\n                      {bins.filter(b => b.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (\n                        <div className=\"px-3 py-2 text-sm text-amber-600 bg-amber-50\">\n                          ⚠️ Bin \"{newProduct.bin}\" not found. Please add it in Bins tab first.\n                        </div>\n                      )}\n                    </div>\n                  )}\n                </div>\n                \n                <div className=\"sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300\">\n                  <label className=\"block text-xs font-semibold text-slate-500 mb-1\">Product Attachment (Image, PDF, Document)</label>\n                  <input id=\"product-file-attachment\" type=\"file\" className=\"text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100\" onChange={(e) => setSelectedFile(e.target.files[0])} />\n                </div>\n\n                <button onClick={addProduct} disabled={saving} className=\"sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all\">\n                  {saving ? '\''Uploading Payload String...'\'' : '\''➕ Add Product with Attachment'\''}\n                </button>\n              </div>\n            </div>\n            \n            <h3 className=\"font-semibold text-sm mb-3 text-slate-600\">Current Stock</h3>\n            <div className=\"divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1\">\n              {stock.map((item, index) => (\n                <div key={index} className=\"py-3 flex justify-between items-center group\">\n                  <div>\n                    <p className=\"font-semibold text-sm text-slate-800\">\n                      {item.description || '\''Unnamed'\''}{'\'' '\''}\n                      <span className=\"text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1\">{item.sku}</span>\n                    </p>\n                    <p className=\"text-xs text-slate-500 mt-1\">\n                      Quantity: <span className=\"text-slate-800 font-medium\">{item.quantity || 0}</span> | \n                      Bin: <span className={`font-medium ${bins.some(b => b.bin_id === item.bin) ? '\''text-emerald-600'\'' : '\''text-rose-500'\''}`}>{item.bin || '\''None'\''}</span>\n                      {!bins.some(b => b.bin_id === item.bin) && item.bin && (\n                        <span className=\"ml-2 text-rose-500 text-[10px]\">⚠️ Bin not found</span>\n                      )}\n                    </p>\n                    {item.attachment_url && (\n                      <a href={item.attachment_url} target=\"_blank\" rel=\"noreferrer\" className=\"inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium\">\n                        🔗 {item.attachment_name || '\''View Attached Document'\''}\n                      </a>\n                    )}\n                  </div>\n                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className=\"text-slate-300 hover:text-rose-600 p-2 transition-all\">🗑️</button>\n                </div>\n              ))}\n              {stock.length === 0 && <p className=\"text-slate-400 text-sm text-center py-6\">No stock records found.</p>}\n            </div>\n          </div>\n        )}\n\n        {activeTab === '\''bins'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-4 text-slate-800\">Bin Locations</h2>\n            <div className=\"mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100\">\n              <h3 className=\"font-semibold text-sm mb-3 text-slate-700\">Add New Bin</h3>\n              <div className=\"grid grid-cols-1 sm:grid-cols-2 gap-3\">\n                <input type=\"text\" placeholder=\"Bin ID\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />\n                <input type=\"text\" placeholder=\"Zone Matrix\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />\n                <button onClick={addBin} disabled={saving} className=\"sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all\">{saving ? '\''Deploying...'\'' : '\''➕ Add Bin'\''}</button>\n              </div>\n            </div>\n\n            <h3 className=\"font-semibold text-sm mb-3 text-slate-600\">Current Bins</h3>\n            <div className=\"grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1\">\n              {bins.map((bin, index) => (\n                <div key={index} className=\"border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start\">\n                  <div>\n                    <p className=\"font-bold font-mono text-slate-800 text-base\">{bin.bin_id}</p>\n                    <p className=\"text-xs text-slate-500 mt-1\">Zone: <span className=\"font-medium text-slate-700\">{bin.zone || '\''General'\''}</span></p>\n                    <p className=\"text-xs text-slate-500\">Status: <span className=\"font-medium text-emerald-600\">{bin.status || '\''Available'\''}</span></p>\n                  </div>\n                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className=\"text-slate-300 hover:text-rose-600 p-1.5 transition-all\">🗑️</button>\n                </div>\n              ))}\n              {bins.length === 0 && <p className=\"col-span-full text-slate-400 text-sm text-center py-6\">No bins provisioned.</p>}\n            </div>\n          </div>\n        )}\n\n        {activeTab === '\''orders'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-4 text-slate-800\">Order Manifests</h2>\n            <div className=\"mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100\">\n              <h3 className=\"font-semibold text-sm mb-3 text-slate-700\">Create New Order</h3>\n              <div className=\"grid grid-cols-1 sm:grid-cols-2 gap-3\">\n                <input type=\"text\" placeholder=\"Order ID\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newOrder.order_id} onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value.toUpperCase() })} />\n                <input type=\"text\" placeholder=\"Customer Name\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newOrder.customer} onChange={(e) => setNewOrder({ ...newOrder, customer: e.target.value })} />\n                <button onClick={addOrder} disabled={saving} className=\"sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all\">{saving ? '\''Creating...'\'' : '\''➕ Create Order'\''}</button>\n              </div>\n            </div>\n\n            <h3 className=\"font-semibold text-sm mb-3 text-slate-600\">All Orders</h3>\n            <div className=\"space-y-2 max-h-96 overflow-y-auto pr-1\">\n              {orders.map((order, index) => (\n                <div key={index} className=\"border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3\">\n                  <div>\n                    <div className=\"flex items-center gap-2\">\n                      <p className=\"font-bold font-mono text-slate-800\">{order.order_id}</p>\n                      {order.created_at && (\n                        <span className=\"text-[10px] text-slate-400 font-normal bg-slate-100 px-1.5 py-0.5 rounded\">\n                          {new Date(order.created_at).toLocaleDateString()}\n                        </span>\n                      )}\n                    </div>\n                    <p className=\"text-xs text-slate-500 mt-1\">Customer: <span className=\"font-medium text-slate-700\">{order.customer}</span></p>\n                  </div>\n                  \n                  <div className=\"flex items-center gap-2 justify-end\">\n                    <div className=\"relative\">\n                      <button \n                        onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)} \n                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${getStatusColor(order.status || '\''Open'\'')}`}\n                      >\n                        <span>{order.status || '\''Open'\''}</span>\n                        <span className=\"text-[10px] opacity-60\">▼</span>\n                      </button>\n                      \n                      {showStatusMenu === order.order_id && (\n                        <div className=\"absolute right-0 mt-2 w-40 bg-slate-900 text-slate-200 rounded-xl shadow-xl border border-slate-800 z-30 overflow-hidden\">\n                          <div className=\"p-1 text-xs\">\n                            {[\n                              { label: '\''📋 Open'\'', value: '\''Open'\'' },\n                              { label: '\''🚚 In Transit'\'', value: '\''In Transit'\'' },\n                              { label: '\''✅ Closed'\'', value: '\''Closed'\'' }\n                            ].map(opt => (\n                              <button \n                                key={opt.value}\n                                onClick={() => updateOrderStatus(order.id, order.order_id, opt.value)} \n                                className=\"w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors\"\n                              >\n                                {opt.label}\n                              </button>\n                            ))}\n                          </div>\n                        </div>\n                      )}\n                    </div>\n                    \n                    <button onClick={() => executeItemRemoval(order.id, order.order_id)} className=\"text-slate-300 hover:text-rose-600 p-2 transition-all\">🗑️</button>\n                  </div>\n                </div>\n              ))}\n              {orders.length === 0 && <p className=\"text-slate-400 text-sm text-center py-8\">No orders found.</p>}\n            </div>\n          </div>\n        )}\n      </main>\n    </div>\n  );\n}\n\nexport default App;"
-    },
-    {
-      "role": "assistant",
-      "content": "**Code Review & Issues Found**\n\nThis is a well-structured React frontend for a Google Sheets-backed WMS. However, there are several issues and areas for improvement:\n\n### Critical Issues\n\n1. **Client-side Bin Validation is Unreliable**\n   ```js\n   const binExists = bins.some(...)\n   ```\n   This validation only works with the current local `bins` state. If another user adds a bin, or the data is stale, it will incorrectly reject valid bins.\n\n2. **No Error Handling on Fetch Responses**\n   Most `fetch` calls only check `res.ok`, but don'\''t read the actual error message from the Google Script response.\n\n3. **Potential Race Condition with `showBinSuggestions`**\n   Using `setTimeout` + `onBlur` is fragile. Better to use `onClickOutside` or `ref`.\n\n4. **File Size Risk**\n   Converting files to base64 and sending them in a single POST can easily hit Apps Script'\''s payload limits (~10MB) or cause timeouts.\n\n5. **Missing Dependency in `useEffect`**\n   The `loadData` function is recreated on every render but is missing from the dependency array (you already disabled the rule, but it'\''s still not ideal).\n\n### Recommended Improvements\n\n**1. Better Error Handling (Recommended)**\n```js\nconst res = await fetch(...);\nconst data = await res.json();\n\nif (!res.ok || data.error) {\n  throw new Error(data.error || '\''Request failed'\'');\n}\n```\n\n**2. Improve Bin Validation**\nAdd a server-side check in your Google Script instead of relying only on client state.\n\n**3. Replace Suggestion Timeout Logic**\n```js\nconst binInputRef = useRef(null);\n\n// Use a click outside handler instead of setTimeout\n```\n\n**4. Add Loading State to Buttons More Consistently**\nYou'\''re already using `saving`, but some actions (like status changes) don'\''t disable the button during the request.\n\n**5. Type Safety / Data Normalization**\nConsider normalizing data (especially `bin_id` and `sku`) to uppercase consistently when storing and retrieving.\n\n### Quick Wins\n\n- Add `aria-label` to icon-only buttons (delete buttons).\n- Consider debouncing the bin suggestion filter.\n- Add optimistic UI updates for better perceived performance.\n- Store the last sync time and show it to users.\n\nWould you like me to:\n1. **Refactor** specific parts (e.g., the bin suggestion logic, error handling, or file upload)?\n2. **Review the Google Apps Script** side (if you share it)?\n3. Focus on **security/performance** improvements?\n\nLet me know what direction you'\''d like to take."
-    },
-    {
-      "role": "user",
-      "content": "first correct the SKU and its description validation, if already an SKU exist with description, when someone try to create the SKU with different name, then auto correct the description."
-    },
-    {
-      "role": "assistant",
-      "content": "Here'\''s the corrected and improved `addProduct` function with **SKU + Description validation**:\n\n### Updated `addProduct` Function\n\n```jsx\nconst addProduct = async () => {\n  const sku = newProduct.sku.trim().toUpperCase();\n  const description = newProduct.description.trim();\n\n  if (!sku) {\n    setMessage('\''❌ Please enter an SKU'\'');\n    return;\n  }\n\n  if (!description) {\n    setMessage('\''❌ Please enter a Description'\'');\n    return;\n  }\n\n  // === SKU + DESCRIPTION VALIDATION ===\n  const existingProduct = stock.find(\n    (item) => item.sku && item.sku.toString().toUpperCase() === sku\n  );\n\n  let finalDescription = description;\n\n  if (existingProduct) {\n    const existingDescription = existingProduct.description?.trim();\n\n    if (existingDescription && existingDescription.toLowerCase() !== description.toLowerCase()) {\n      finalDescription = existingDescription;\n      setMessage(`ℹ️ Description auto-corrected to match existing SKU: \"${existingDescription}\"`);\n    }\n  }\n\n  // === BIN VALIDATION ===\n  if (!newProduct.bin.trim()) {\n    setMessage('\''❌ Please enter a Bin Location'\'');\n    return;\n  }\n\n  const binExists = bins.some(\n    (bin) => bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()\n  );\n\n  if (!binExists) {\n    setMessage(`❌ Bin \"${newProduct.bin.toUpperCase()}\" does not exist. Please add it in the Bins tab first.`);\n    return;\n  }\n\n  setSaving(true);\n  try {\n    let filePayload = {};\n\n    if (selectedFile) {\n      const base64String = await convertFileToBase64(selectedFile);\n      filePayload = {\n        fileData: base64String,\n        fileName: selectedFile.name,\n        fileType: selectedFile.type,\n      };\n    }\n\n    const payload = {\n      action: '\''ADD_PRODUCT'\'',\n      sku: sku,\n      description: finalDescription, // ← Use corrected description\n      quantity: parseInt(newProduct.quantity, 10) || 0,\n      bin: newProduct.bin.trim().toUpperCase(),\n      ...filePayload,\n    };\n\n    const res = await fetch(API_URL, {\n      redirect: '\''follow'\'',\n      method: '\''POST'\'',\n      headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n      body: JSON.stringify(payload),\n    });\n\n    if (!res.ok) throw new Error();\n\n    // Reset form\n    setNewProduct({ sku: '\'''\'', description: '\'''\'', quantity: '\'''\'', bin: '\'''\'' });\n    setSelectedFile(null);\n\n    const fileInput = document.getElementById('\''product-file-attachment'\'');\n    if (fileInput) fileInput.value = '\'''\'';\n\n    if (!message.includes('\''auto-corrected'\'')) {\n      setMessage('\''✅ Product added successfully!'\'');\n    }\n\n    await loadData();\n  } catch (err) {\n    setMessage('\''❌ Failed to save product data'\'');\n  } finally {\n    setSaving(false);\n  }\n};\n```\n\n### Key Changes Made:\n\n1. **SKU Uniqueness Check**: Now checks if the SKU already exists in the current stock.\n2. **Auto-correct Description**: If the SKU exists but the description is different, it automatically uses the existing description and shows an info message.\n3. **Improved Validation Flow**: SKU is validated first, then description consistency, then bin validation.\n4. **User Feedback**: Shows a clear message when description is auto-corrected.\n5. **Prevents Mismatch**: Ensures description consistency for the same SKU.\n\nWould you also like to:\n- Prevent adding duplicate SKUs entirely (only allow quantity/bin updates)?\n- Show a warning before auto-correcting?\n\nLet me know how you want to handle it."
-    },
-    {
-      "role": "user",
-      "content": "Can you provide the full App.js to replace"
-    },
-    {
-      "role": "assistant",
-      "content": "Here is the **full updated `App.js`** with the corrected SKU + Description validation logic:\n\n```jsx\nimport React, { useState, useEffect } from '\''react'\'';\n\n// Your newly updated Google Script Web App URL\nconst API_URL = '\''https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnKsWOLbk6H5Z2cq8uOe10EPxlecgxzvscV4Z-Cpu5TI-bk/exec'\'';\n\nfunction App() {\n  const [activeTab, setActiveTab] = useState('\''dashboard'\'');\n  const [stock, setStock] = useState([]);\n  const [bins, setBins] = useState([]);\n  const [orders, setOrders] = useState([]);\n  const [loading, setLoading] = useState(true);\n  const [saving, setSaving] = useState(false);\n  const [message, setMessage] = useState('\'''\'');\n  const [showStatusMenu, setShowStatusMenu] = useState(null);\n  const [showBinSuggestions, setShowBinSuggestions] = useState(false);\n\n  const [newProduct, setNewProduct] = useState({ sku: '\'''\'', description: '\'''\'', quantity: '\'''\'', bin: '\'''\'' });\n  const [selectedFile, setSelectedFile] = useState(null);\n  const [newBin, setNewBin] = useState({ bin_id: '\'''\'', zone: '\'''\'' });\n  const [newOrder, setNewOrder] = useState({ order_id: '\'''\'', customer: '\'''\'' });\n\n  const loadData = async () => {\n    try {\n      setLoading(true);\n      const response = await fetch(API_URL);\n      if (!response.ok) throw new Error('\''Network failure'\'');\n      const allData = await response.json();\n\n      const dataArray = Array.isArray(allData) ? allData : [];\n\n      const stockData = dataArray\n        .filter(row => row && row.sku && row.sku.toString().trim() !== '\'''\'' && !row.order_id)\n        .map(row => ({ ...row, id: row.__row_number__ }));\n        \n      const binsData = dataArray\n        .filter(row => row && row.bin_id && row.bin_id.toString().trim() !== '\'''\'')\n        .map(row => ({ ...row, id: row.__row_number__ }));\n        \n      const ordersData = dataArray\n        .filter(row => row && row.order_id && row.order_id.toString().trim() !== '\'''\'')\n        .map(row => ({ ...row, id: row.__row_number__ }));\n\n      setStock(stockData);\n      setBins(binsData);\n      setOrders(ordersData);\n    } catch (error) {\n      console.error('\''Error fetching data:'\'', error);\n      setMessage('\''❌ Failed to synchronize data index'\'');\n    } finally {\n      setLoading(false);\n    }\n  };\n\n  useEffect(() => {\n    loadData();\n    // eslint-disable-next-line react-hooks/exhaustive-deps\n  }, []);\n\n  useEffect(() => {\n    if (message) {\n      const timer = setTimeout(() => setMessage('\'''\''), 4000);\n      return () => clearTimeout(timer);\n    }\n  }, [message]);\n\n  const convertFileToBase64 = (file) => {\n    return new Promise((resolve, reject) => {\n      const reader = new FileReader();\n      reader.readAsDataURL(file);\n      reader.onload = () => resolve(reader.result);\n      reader.onerror = (error) => reject(error);\n    });\n  };\n\n  // ==================== UPDATED addProduct FUNCTION ====================\n  const addProduct = async () => {\n    const sku = newProduct.sku.trim().toUpperCase();\n    const description = newProduct.description.trim();\n\n    if (!sku) {\n      setMessage('\''❌ Please enter an SKU'\'');\n      return;\n    }\n\n    if (!description) {\n      setMessage('\''❌ Please enter a Description'\'');\n      return;\n    }\n\n    // === SKU + DESCRIPTION VALIDATION ===\n    const existingProduct = stock.find(\n      (item) => item.sku && item.sku.toString().toUpperCase() === sku\n    );\n\n    let finalDescription = description;\n\n    if (existingProduct) {\n      const existingDescription = existingProduct.description?.trim();\n\n      if (existingDescription && existingDescription.toLowerCase() !== description.toLowerCase()) {\n        finalDescription = existingDescription;\n        setMessage(`ℹ️ Description auto-corrected to match existing SKU: \"${existingDescription}\"`);\n      }\n    }\n\n    // === BIN VALIDATION ===\n    if (!newProduct.bin.trim()) {\n      setMessage('\''❌ Please enter a Bin Location'\'');\n      return;\n    }\n\n    const binExists = bins.some(\n      (bin) => bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()\n    );\n\n    if (!binExists) {\n      setMessage(`❌ Bin \"${newProduct.bin.toUpperCase()}\" does not exist. Please add it in the Bins tab first.`);\n      return;\n    }\n\n    setSaving(true);\n    try {\n      let filePayload = {};\n\n      if (selectedFile) {\n        const base64String = await convertFileToBase64(selectedFile);\n        filePayload = {\n          fileData: base64String,\n          fileName: selectedFile.name,\n          fileType: selectedFile.type,\n        };\n      }\n\n      const payload = {\n        action: '\''ADD_PRODUCT'\'',\n        sku: sku,\n        description: finalDescription,\n        quantity: parseInt(newProduct.quantity, 10) || 0,\n        bin: newProduct.bin.trim().toUpperCase(),\n        ...filePayload,\n      };\n\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify(payload),\n      });\n\n      if (!res.ok) throw new Error();\n\n      setNewProduct({ sku: '\'''\'', description: '\'''\'', quantity: '\'''\'', bin: '\'''\'' });\n      setSelectedFile(null);\n\n      const fileInput = document.getElementById('\''product-file-attachment'\'');\n      if (fileInput) fileInput.value = '\'''\'';\n\n      if (!message.includes('\''auto-corrected'\'')) {\n        setMessage('\''✅ Product added successfully!'\'');\n      }\n\n      await loadData();\n    } catch (err) {\n      setMessage('\''❌ Failed to save product data'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n  // =====================================================================\n\n  const addBin = async () => {\n    if (!newBin.bin_id.trim()) {\n      setMessage('\''❌ Please supply a valid Bin ID'\'');\n      return;\n    }\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({\n          action: '\''ADD_BIN'\'',\n          bin_id: newBin.bin_id.trim().toUpperCase(),\n          zone: newBin.zone.trim() || '\''General'\'',\n          status: '\''Available'\''\n        })\n      });\n      if (!res.ok) throw new Error();\n      setNewBin({ bin_id: '\'''\'', zone: '\'''\'' });\n      setMessage('\''✅ Bin mapped successfully!'\'');\n      await loadData();\n    } catch {\n      setMessage('\''❌ Failed to provision new bin'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const addOrder = async () => {\n    if (!newOrder.order_id.trim() || !newOrder.customer.trim()) {\n      setMessage('\''❌ Please input Order ID and Customer Name'\'');\n      return;\n    }\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({\n          action: '\''ADD_ORDER'\'',\n          order_id: newOrder.order_id.trim().toUpperCase(),\n          customer: newOrder.customer.trim(),\n          status: '\''Open'\'',\n          created_at: new Date().toISOString()\n        })\n      });\n      if (!res.ok) throw new Error();\n      setNewOrder({ order_id: '\'''\'', customer: '\'''\'' });\n      setMessage('\''✅ Order generated successfully!'\'');\n      await loadData();\n    } catch {\n      setMessage('\''❌ Failed to stage order'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const updateOrderStatus = async (rowId, orderId, newStatus) => {\n    if (!rowId) {\n      setMessage('\''❌ Target ID missing'\'');\n      return;\n    }\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, {\n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({ \n          action: '\''UPDATE_STATUS'\'', \n          rowNumber: parseInt(rowId, 10), \n          status: newStatus \n        })\n      });\n      if (!res.ok) throw new Error();\n      setMessage(`✅ Order ${orderId} status changed to: ${newStatus}`);\n      await loadData();\n      setShowStatusMenu(null);\n    } catch {\n      setMessage('\''❌ Failed to change order status'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const executeItemRemoval = async (rowId, label) => {\n    if (!rowId) {\n      setMessage('\''❌ Missing reference coordinate'\'');\n      return;\n    }\n    if (!window.confirm(`Permanently delete record: ${label}?`)) return;\n    setSaving(true);\n    try {\n      const res = await fetch(API_URL, { \n        redirect: '\''follow'\'',\n        method: '\''POST'\'',\n        headers: { '\''Content-Type'\'': '\''text/plain;charset=utf-8'\'' },\n        body: JSON.stringify({ \n          action: '\''DELETE_ROW'\'', \n          rowNumber: parseInt(rowId, 10) \n        })\n      });\n      if (!res.ok) throw new Error();\n      setMessage(`✅ Record removed successfully.`);\n      await loadData();\n    } catch {\n      setMessage('\''❌ Delete request failed'\'');\n    } finally {\n      setSaving(false);\n    }\n  };\n\n  const getStatusColor = (status) => {\n    switch (status) {\n      case '\''Open'\'': return '\''bg-amber-100 text-amber-900 border border-amber-300'\'';\n      case '\''In Transit'\'': return '\''bg-sky-100 text-sky-900 border border-sky-300'\'';\n      case '\''Closed'\'': return '\''bg-emerald-100 text-emerald-900 border border-emerald-300'\'';\n      default: return '\''bg-slate-100 text-slate-800 border border-slate-300'\'';\n    }\n  };\n\n  if (loading) {\n    return (\n      <div className=\"min-h-screen bg-slate-50 flex items-center justify-center\">\n        <div className=\"text-center\">\n          <div className=\"text-4xl mb-3\">📊</div>\n          <div className=\"text-lg font-medium text-slate-600\">Loading WMS Data Matrix...</div>\n        </div>\n      </div>\n    );\n  }\n\n  return (\n    <div className=\"min-h-screen bg-slate-50 font-sans text-slate-900\">\n      <header className=\"bg-slate-900 text-white shadow-md\">\n        <div className=\"max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2\">\n          <div className=\"flex items-center gap-3\">\n            <span className=\"text-3xl\">📦</span>\n            <div>\n              <h1 className=\"text-xl font-bold tracking-tight\">SmallBiz WMS</h1>\n              <p className=\"text-xs text-slate-400\">Powered by Google Scripts Deployment</p>\n            </div>\n          </div>\n          <div className=\"text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded border border-slate-700\">\n            System Online\n          </div>\n        </div>\n      </header>\n\n      {message && (\n        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl text-sm font-medium ${\n          message.includes('\''✅'\'') || message.includes('\''ℹ️'\'') ? '\''bg-slate-900 text-emerald-400 border border-emerald-500/30'\'' : '\''bg-slate-900 text-rose-400 border border-rose-500/30'\''\n        }`}>\n          {message}\n        </div>\n      )}\n\n      <main className=\"container mx-auto p-4 max-w-6xl mt-4\">\n        <nav className=\"flex gap-1.5 mb-6 bg-slate-200/60 p-1.5 rounded-xl max-w-md\">\n          {[\n            { id: '\''dashboard'\'', label: '\''Dashboard'\'', icon: '\''📊'\'' },\n            { id: '\''stock'\'', label: '\''Stock'\'', icon: '\''📦'\'' },\n            { id: '\''bins'\'', label: '\''Bins'\'', icon: '\''🗑️'\'' },\n            { id: '\''orders'\'', label: '\''Orders'\'', icon: '\''📝'\'' }\n          ].map(tab => (\n            <button\n              key={tab.id}\n              onClick={() => { setActiveTab(tab.id); setShowStatusMenu(null); }}\n              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${\n                activeTab === tab.id ? '\''bg-white text-blue-600 shadow-sm font-semibold'\'' : '\''text-slate-600 hover:bg-white/50'\''\n              }`}\n            >\n              <span>{tab.icon}</span>\n              <span className=\"hidden sm:inline\">{tab.label}</span>\n            </button>\n          ))}\n        </nav>\n\n        {activeTab === '\''dashboard'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-5 text-slate-800\">Operational Aggregates</h2>\n            <div className=\"grid grid-cols-2 md:grid-cols-4 gap-4\">\n              {[\n                { title: '\''Units in Stock'\'', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: '\''from-blue-500 to-indigo-600'\'', icon: '\''📦'\'' },\n                { title: '\''Unique SKUs'\'', count: stock.length, color: '\''from-emerald-500 to-teal-600'\'', icon: '\''🏷️'\'' },\n                { title: '\''Allocated Locations'\'', count: bins.length, color: '\''from-violet-500 to-purple-600'\'', icon: '\''🗑️'\'' },\n                { title: '\''Active Pipelines'\'', count: orders.length, color: '\''from-amber-500 to-orange-600'\'', icon: '\''📋'\'' }\n              ].map((card, idx) => (\n                <div key={idx} className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm`}>\n                  <div className=\"text-2xl mb-1 opacity-90\">{card.icon}</div>\n                  <h3 className=\"text-xs font-medium uppercase tracking-wider text-white/80\">{card.title}</h3>\n                  <p className=\"text-2xl font-black mt-1\">{card.count}</p>\n                </div>\n              ))}\n            </div>\n          </div>\n        )}\n\n        {activeTab === '\''stock'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-4 text-slate-800\">Inventory Index</h2>\n            <div className=\"mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100\">\n              <h3 className=\"font-semibold text-sm mb-3 text-slate-700\">Add New Product</h3>\n              <div className=\"grid grid-cols-1 sm:grid-cols-2 gap-3\">\n                <input \n                  type=\"text\" \n                  placeholder=\"SKU ID\" \n                  className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white\" \n                  value={newProduct.sku} \n                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} \n                />\n                <input \n                  type=\"text\" \n                  placeholder=\"Description\" \n                  className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white\" \n                  value={newProduct.description} \n                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} \n                />\n                <input \n                  type=\"number\" \n                  placeholder=\"Quantity\" \n                  className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white\" \n                  value={newProduct.quantity} \n                  onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} \n                />\n                \n                <div className=\"relative\">\n                  <input \n                    type=\"text\" \n                    placeholder=\"Bin Location (must exist in Bins tab)\" \n                    className=\"border border-slate-200 p-2 text-sm rounded-lg bg-white w-full\" \n                    value={newProduct.bin} \n                    onChange={(e) => {\n                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });\n                      setShowBinSuggestions(true);\n                    }}\n                    onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}\n                    onFocus={() => setShowBinSuggestions(true)}\n                  />\n                  {showBinSuggestions && bins.length > 0 && newProduct.bin && (\n                    <div className=\"absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto\">\n                      {bins\n                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))\n                        .slice(0, 5)\n                        .map((bin, idx) => (\n                          <div \n                            key={idx}\n                            className=\"px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0\"\n                            onMouseDown={() => {\n                              setNewProduct({ ...newProduct, bin: bin.bin_id });\n                              setShowBinSuggestions(false);\n                            }}\n                          >\n                            <span className=\"font-mono\">{bin.bin_id}</span>\n                            <span className=\"text-xs text-slate-400 ml-2\">({bin.zone || '\''General'\''})</span>\n                          </div>\n                        ))}\n                      {bins.filter(b => b.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (\n                        <div className=\"px-3 py-2 text-sm text-amber-600 bg-amber-50\">\n                          ⚠️ Bin \"{newProduct.bin}\" not found. Please add it in Bins tab first.\n                        </div>\n                      )}\n                    </div>\n                  )}\n                </div>\n                \n                <div className=\"sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300\">\n                  <label className=\"block text-xs font-semibold text-slate-500 mb-1\">Product Attachment (Image, PDF, Document)</label>\n                  <input id=\"product-file-attachment\" type=\"file\" className=\"text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100\" onChange={(e) => setSelectedFile(e.target.files[0])} />\n                </div>\n\n                <button onClick={addProduct} disabled={saving} className=\"sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all\">\n                  {saving ? '\''Uploading Payload String...'\'' : '\''➕ Add Product with Attachment'\''}\n                </button>\n              </div>\n            </div>\n            \n            <h3 className=\"font-semibold text-sm mb-3 text-slate-600\">Current Stock</h3>\n            <div className=\"divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1\">\n              {stock.map((item, index) => (\n                <div key={index} className=\"py-3 flex justify-between items-center group\">\n                  <div>\n                    <p className=\"font-semibold text-sm text-slate-800\">\n                      {item.description || '\''Unnamed'\''}{'\'' '\''}\n                      <span className=\"text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1\">{item.sku}</span>\n                    </p>\n                    <p className=\"text-xs text-slate-500 mt-1\">\n                      Quantity: <span className=\"text-slate-800 font-medium\">{item.quantity || 0}</span> | \n                      Bin: <span className={`font-medium ${bins.some(b => b.bin_id === item.bin) ? '\''text-emerald-600'\'' : '\''text-rose-500'\''}`}>{item.bin || '\''None'\''}</span>\n                      {!bins.some(b => b.bin_id === item.bin) && item.bin && (\n                        <span className=\"ml-2 text-rose-500 text-[10px]\">⚠️ Bin not found</span>\n                      )}\n                    </p>\n                    {item.attachment_url && (\n                      <a href={item.attachment_url} target=\"_blank\" rel=\"noreferrer\" className=\"inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium\">\n                        🔗 {item.attachment_name || '\''View Attached Document'\''}\n                      </a>\n                    )}\n                  </div>\n                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className=\"text-slate-300 hover:text-rose-600 p-2 transition-all\">🗑️</button>\n                </div>\n              ))}\n              {stock.length === 0 && <p className=\"text-slate-400 text-sm text-center py-6\">No stock records found.</p>}\n            </div>\n          </div>\n        )}\n\n        {activeTab === '\''bins'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-4 text-slate-800\">Bin Locations</h2>\n            <div className=\"mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100\">\n              <h3 className=\"font-semibold text-sm mb-3 text-slate-700\">Add New Bin</h3>\n              <div className=\"grid grid-cols-1 sm:grid-cols-2 gap-3\">\n                <input type=\"text\" placeholder=\"Bin ID\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />\n                <input type=\"text\" placeholder=\"Zone Matrix\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />\n                <button onClick={addBin} disabled={saving} className=\"sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all\">{saving ? '\''Deploying...'\'' : '\''➕ Add Bin'\''}</button>\n              </div>\n            </div>\n\n            <h3 className=\"font-semibold text-sm mb-3 text-slate-600\">Current Bins</h3>\n            <div className=\"grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1\">\n              {bins.map((bin, index) => (\n                <div key={index} className=\"border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start\">\n                  <div>\n                    <p className=\"font-bold font-mono text-slate-800 text-base\">{bin.bin_id}</p>\n                    <p className=\"text-xs text-slate-500 mt-1\">Zone: <span className=\"font-medium text-slate-700\">{bin.zone || '\''General'\''}</span></p>\n                    <p className=\"text-xs text-slate-500\">Status: <span className=\"font-medium text-emerald-600\">{bin.status || '\''Available'\''}</span></p>\n                  </div>\n                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className=\"text-slate-300 hover:text-rose-600 p-1.5 transition-all\">🗑️</button>\n                </div>\n              ))}\n              {bins.length === 0 && <p className=\"col-span-full text-slate-400 text-sm text-center py-6\">No bins provisioned.</p>}\n            </div>\n          </div>\n        )}\n\n        {activeTab === '\''orders'\'' && (\n          <div className=\"bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6\">\n            <h2 className=\"text-lg font-bold mb-4 text-slate-800\">Order Manifests</h2>\n            <div className=\"mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100\">\n              <h3 className=\"font-semibold text-sm mb-3 text-slate-700\">Create New Order</h3>\n              <div className=\"grid grid-cols-1 sm:grid-cols-2 gap-3\">\n                <input type=\"text\" placeholder=\"Order ID\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newOrder.order_id} onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value.toUpperCase() })} />\n                <input type=\"text\" placeholder=\"Customer Name\" className=\"border border-slate-200 p-2 text-sm rounded-lg\" value={newOrder.customer} onChange={(e) => setNewOrder({ ...newOrder, customer: e.target.value })} />\n                <button onClick={addOrder} disabled={saving} className=\"sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all\">{saving ? '\''Creating...'\'' : '\''➕ Create Order'\''}</button>\n              </div>\n            </div>\n\n            <h3 className=\"font-semibold text-sm mb-3 text-slate-600\">All Orders</h3>\n            <div className=\"space-y-2 max-h-96 overflow-y-auto pr-1\">\n              {orders.map((order, index) => (\n                <div key={index} className=\"border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3\">\n                  <div>\n                    <div className=\"flex items-center gap-2\">\n                      <p className=\"font-bold font-mono text-slate-800\">{order.order_id}</p>\n                      {order.created_at && (\n                        <span className=\"text-[10px] text-slate-400 font-normal bg-slate-100 px-1.5 py-0.5 rounded\">\n                          {new Date(order.created_at).toLocaleDateString()}\n                        </span>\n                      )}\n                    </div>\n                    <p className=\"text-xs text-slate-500 mt-1\">Customer: <span className=\"font-medium text-slate-700\">{order.customer}</span></p>\n                  </div>\n                  \n                  <div className=\"flex items-center gap-2 justify-end\">\n                    <div className=\"relative\">\n                      <button \n                        onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)} \n                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${getStatusColor(order.status || '\''Open'\'')}`}\n                      >\n                        <span>{order.status || '\''Open'\''}</span>\n                        <span className=\"text-[10px] opacity-60\">▼</span>\n                      </button>\n                      \n                      {showStatusMenu === order.order_id && (\n                        <div className=\"absolute right-0 mt-2 w-40 bg-slate-900 text-slate-200 rounded-xl shadow-xl border border-slate-800 z-30 overflow-hidden\">\n                          <div className=\"p-1 text-xs\">\n                            {[\n                              { label: '\''📋 Open'\'', value: '\''Open'\'' },\n                              { label: '\''🚚 In Transit'\'', value: '\''In Transit'\'' },\n                              { label: '\''✅ Closed'\'', value: '\''Closed'\'' }\n                            ].map(opt => (\n                              <button \n                                key={opt.value}\n                                onClick={() => updateOrderStatus(order.id, order.order_id, opt.value)} \n                                className=\"w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors\"\n                              >\n                                {opt.label}\n                              </button>\n                            ))}\n                          </div>\n                        </div>\n                      )}\n                    </div>\n                    \n                    <button onClick={() => executeItemRemoval(order.id, order.order_id)} className=\"text-slate-300 hover:text-rose-600 p-2 transition-all\">🗑️</button>\n                  </div>\n                </div>\n              ))}\n              {orders.length === 0 && <p className=\"text-slate-400 text-sm text-center py-8\">No orders found.</p>}\n            </div>\n          </div>\n        )}\n      </main>\n    </div>\n  );\n}\n\nexport default App;\n```"
+import React, { useState, useEffect } from 'react';
+
+const API_URL = 'https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnKsWOLbk6H5Z2cq8uOe10EPxlecgxzvscV4Z-Cpu5TI-bk/exec';
+
+function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [stock, setStock] = useState([]);
+  const [bins, setBins] = useState([]);
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState('');
+  const [showStatusMenu, setShowStatusMenu] = useState(null);
+  const [showBinSuggestions, setShowBinSuggestions] = useState(false);
+
+  const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [newBin, setNewBin] = useState({ bin_id: '', zone: '' });
+  const [newOrder, setNewOrder] = useState({ order_id: '', customer: '' });
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(API_URL);
+      if (!response.ok) throw new Error('Network failure');
+      const allData = await response.json();
+      const dataArray = Array.isArray(allData) ? allData : [];
+
+      const stockData = dataArray
+        .filter(row => row && row.sku && row.sku.toString().trim() !== '' && !row.order_id)
+        .map(row => ({ ...row, id: row.__row_number__ }));
+
+      const binsData = dataArray
+        .filter(row => row && row.bin_id && row.bin_id.toString().trim() !== '')
+        .map(row => ({ ...row, id: row.__row_number__ }));
+
+      const ordersData = dataArray
+        .filter(row => row && row.order_id && row.order_id.toString().trim() !== '')
+        .map(row => ({ ...row, id: row.__row_number__ }));
+
+      setStock(stockData);
+      setBins(binsData);
+      setOrders(ordersData);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setMessage('❌ Failed to synchronize data index');
+    } finally {
+      setLoading(false);
     }
-  ]
-}'
+  };
+
+  useEffect(() => {
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (message) {
+      const timer = setTimeout(() => setMessage(''), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
+  const convertFileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = (error) => reject(error);
+    });
+  };
+
+  const addProduct = async () => {
+    const sku = newProduct.sku.trim().toUpperCase();
+    const description = newProduct.description.trim();
+
+    if (!sku) {
+      setMessage('❌ Please enter an SKU');
+      return;
+    }
+    if (!description) {
+      setMessage('❌ Please enter a Description');
+      return;
+    }
+
+    const existingProduct = stock.find(
+      (item) => item.sku && item.sku.toString().toUpperCase() === sku
+    );
+
+    let finalDescription = description;
+
+    if (existingProduct) {
+      const existingDescription = existingProduct.description?.trim();
+      if (existingDescription && existingDescription.toLowerCase() !== description.toLowerCase()) {
+        finalDescription = existingDescription;
+        setMessage(`ℹ️ Description auto-corrected to match existing SKU: "${existingDescription}"`);
+      }
+    }
+
+    if (!newProduct.bin.trim()) {
+      setMessage('❌ Please enter a Bin Location');
+      return;
+    }
+
+    const binExists = bins.some(
+      (bin) => bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
+    );
+
+    if (!binExists) {
+      setMessage(`❌ Bin "${newProduct.bin.toUpperCase()}" does not exist. Please add it in the Bins tab first.`);
+      return;
+    }
+
+    setSaving(true);
+    try {
+      let filePayload = {};
+
+      if (selectedFile) {
+        const base64String = await convertFileToBase64(selectedFile);
+        filePayload = {
+          fileData: base64String,
+          fileName: selectedFile.name,
+          fileType: selectedFile.type,
+        };
+      }
+
+      const payload = {
+        action: 'ADD_PRODUCT',
+        sku: sku,
+        description: finalDescription,
+        quantity: parseInt(newProduct.quantity, 10) || 0,
+        bin: newProduct.bin.trim().toUpperCase(),
+        ...filePayload,
+      };
+
+      const res = await fetch(API_URL, {
+        redirect: 'follow',
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload),
+      });
+
+      if (!res.ok) throw new Error();
+
+      setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
+      setSelectedFile(null);
+
+      const fileInput = document.getElementById('product-file-attachment');
+      if (fileInput) fileInput.value = '';
+
+      if (!message.includes('auto-corrected')) {
+        setMessage('✅ Product added successfully!');
+      }
+
+      await loadData();
+    } catch (err) {
+      setMessage('❌ Failed to save product data');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addBin = async () => {
+    if (!newBin.bin_id.trim()) {
+      setMessage('❌ Please supply a valid Bin ID');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(API_URL, {
+        redirect: 'follow',
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'ADD_BIN',
+          bin_id: newBin.bin_id.trim().toUpperCase(),
+          zone: newBin.zone.trim() || 'General',
+          status: 'Available'
+        })
+      });
+      if (!res.ok) throw new Error();
+      setNewBin({ bin_id: '', zone: '' });
+      setMessage('✅ Bin mapped successfully!');
+      await loadData();
+    } catch {
+      setMessage('❌ Failed to provision new bin');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const addOrder = async () => {
+    if (!newOrder.order_id.trim() || !newOrder.customer.trim()) {
+      setMessage('❌ Please input Order ID and Customer Name');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(API_URL, {
+        redirect: 'follow',
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'ADD_ORDER',
+          order_id: newOrder.order_id.trim().toUpperCase(),
+          customer: newOrder.customer.trim(),
+          status: 'Open',
+          created_at: new Date().toISOString()
+        })
+      });
+      if (!res.ok) throw new Error();
+      setNewOrder({ order_id: '', customer: '' });
+      setMessage('✅ Order generated successfully!');
+      await loadData();
+    } catch {
+      setMessage('❌ Failed to stage order');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const updateOrderStatus = async (rowId, orderId, newStatus) => {
+    if (!rowId) {
+      setMessage('❌ Target ID missing');
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(API_URL, {
+        redirect: 'follow',
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'UPDATE_STATUS',
+          rowNumber: parseInt(rowId, 10),
+          status: newStatus
+        })
+      });
+      if (!res.ok) throw new Error();
+      setMessage(`✅ Order ${orderId} status changed to: ${newStatus}`);
+      await loadData();
+      setShowStatusMenu(null);
+    } catch {
+      setMessage('❌ Failed to change order status');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const executeItemRemoval = async (rowId, label) => {
+    if (!rowId) {
+      setMessage('❌ Missing reference coordinate');
+      return;
+    }
+    if (!window.confirm(`Permanently delete record: ${label}?`)) return;
+    setSaving(true);
+    try {
+      const res = await fetch(API_URL, {
+        redirect: 'follow',
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({
+          action: 'DELETE_ROW',
+          rowNumber: parseInt(rowId, 10)
+        })
+      });
+      if (!res.ok) throw new Error();
+      setMessage(`✅ Record removed successfully.`);
+      await loadData();
+    } catch {
+      setMessage('❌ Delete request failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Open': return 'bg-amber-100 text-amber-900 border border-amber-300';
+      case 'In Transit': return 'bg-sky-100 text-sky-900 border border-sky-300';
+      case 'Closed': return 'bg-emerald-100 text-emerald-900 border border-emerald-300';
+      default: return 'bg-slate-100 text-slate-800 border border-slate-300';
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-4xl mb-3">📊</div>
+          <div className="text-lg font-medium text-slate-600">Loading WMS Data Matrix...</div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      <header className="bg-slate-900 text-white shadow-md">
+        <div className="max-w-6xl mx-auto px-4 py-5 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <div className="flex items-center gap-3">
+            <span className="text-3xl">📦</span>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">SmallBiz WMS</h1>
+              <p className="text-xs text-slate-400">Powered by Google Scripts Deployment</p>
+            </div>
+          </div>
+          <div className="text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded border border-slate-700">
+            System Online
+          </div>
+        </div>
+      </header>
+
+      {message && (
+        <div className={`fixed top-4 right-4 z-50 p-4 rounded-xl shadow-xl text-sm font-medium ${
+          message.includes('✅') || message.includes('ℹ️') 
+            ? 'bg-slate-900 text-emerald-400 border border-emerald-500/30' 
+            : 'bg-slate-900 text-rose-400 border border-rose-500/30'
+        }`}>
+          {message}
+        </div>
+      )}
+
+      <main className="container mx-auto p-4 max-w-6xl mt-4">
+        <nav className="flex gap-1.5 mb-6 bg-slate-200/60 p-1.5 rounded-xl max-w-md">
+          {[
+            { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+            { id: 'stock', label: 'Stock', icon: '📦' },
+            { id: 'bins', label: 'Bins', icon: '🗑️' },
+            { id: 'orders', label: 'Orders', icon: '📝' }
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => { setActiveTab(tab.id); setShowStatusMenu(null); }}
+              className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:bg-white/50'
+              }`}
+            >
+              <span>{tab.icon}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </button>
+          ))}
+        </nav>
+
+        {/* ==================== DASHBOARD ==================== */}
+        {activeTab === 'dashboard' && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-5 text-slate-800">Operational Aggregates</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {[
+                { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦' },
+                { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️' },
+                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️' },
+                { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋' }
+              ].map((card, idx) => (
+                <div key={idx} className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm`}>
+                  <div className="text-2xl mb-1 opacity-90">{card.icon}</div>
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-white/80">{card.title}</h3>
+                  <p className="text-2xl font-black mt-1">{card.count}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== STOCK ==================== */}
+        {activeTab === 'stock' && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-4 text-slate-800">Inventory Index</h2>
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input 
+                  type="text" 
+                  placeholder="SKU ID" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.sku} 
+                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Description" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.description} 
+                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} 
+                />
+                <input 
+                  type="number" 
+                  placeholder="Quantity" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.quantity} 
+                  onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} 
+                />
+                
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    placeholder="Bin Location (must exist in Bins tab)" 
+                    className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
+                    value={newProduct.bin} 
+                    onChange={(e) => {
+                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });
+                      setShowBinSuggestions(true);
+                    }}
+                    onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}
+                    onFocus={() => setShowBinSuggestions(true)}
+                  />
+                  {showBinSuggestions && bins.length > 0 && newProduct.bin && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {bins
+                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))
+                        .slice(0, 5)
+                        .map((bin, idx) => (
+                          <div 
+                            key={idx}
+                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
+                            onMouseDown={() => {
+                              setNewProduct({ ...newProduct, bin: bin.bin_id });
+                              setShowBinSuggestions(false);
+                            }}
+                          >
+                            <span className="font-mono">{bin.bin_id}</span>
+                            <span className="text-xs text-slate-400 ml-2">({bin.zone || 'General'})</span>
+                          </div>
+                        ))}
+                      {bins.filter(b => b.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
+                          ⚠️ Bin "{newProduct.bin}" not found. Please add it in Bins tab first.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+                
+                <div className="sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300">
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment (Image, PDF, Document)</label>
+                  <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setSelectedFile(e.target.files[0])} />
+                </div>
+
+                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
+                  {saving ? 'Uploading Payload String...' : '➕ Add Product with Attachment'}
+                </button>
+              </div>
+            </div>
+            
+            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Stock</h3>
+            <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
+              {stock.map((item, index) => (
+                <div key={index} className="py-3 flex justify-between items-center group">
+                  <div>
+                    <p className="font-semibold text-sm text-slate-800">
+                      {item.description || 'Unnamed'}{' '}
+                      <span className="text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1">{item.sku}</span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Quantity: <span className="text-slate-800 font-medium">{item.quantity || 0}</span> | 
+                      Bin: <span className={`font-medium ${bins.some(b => b.bin_id === item.bin) ? 'text-emerald-600' : 'text-rose-500'}`}>{item.bin || 'None'}</span>
+                      {!bins.some(b => b.bin_id === item.bin) && item.bin && (
+                        <span className="ml-2 text-rose-500 text-[10px]">⚠️ Bin not found</span>
+                      )}
+                    </p>
+                    {item.attachment_url && (
+                      <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
+                        🔗 {item.attachment_name || 'View Attached Document'}
+                      </a>
+                    )}
+                  </div>
+                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
+                </div>
+              ))}
+              {stock.length === 0 && <p className="text-slate-400 text-sm text-center py-6">No stock records found.</p>}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== BINS ==================== */}
+        {activeTab === 'bins' && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-4 text-slate-800">Bin Locations</h2>
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Bin</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input type="text" placeholder="Bin ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
+                <input type="text" placeholder="Zone Matrix" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />
+                <button onClick={addBin} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Deploying...' : '➕ Add Bin'}</button>
+              </div>
+            </div>
+
+            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Bins</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
+              {bins.map((bin, index) => (
+                <div key={index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start">
+                  <div>
+                    <p className="font-bold font-mono text-slate-800 text-base">{bin.bin_id}</p>
+                    <p className="text-xs text-slate-500 mt-1">Zone: <span className="font-medium text-slate-700">{bin.zone || 'General'}</span></p>
+                    <p className="text-xs text-slate-500">Status: <span className="font-medium text-emerald-600">{bin.status || 'Available'}</span></p>
+                  </div>
+                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5 transition-all">🗑️</button>
+                </div>
+              ))}
+              {bins.length === 0 && <p className="col-span-full text-slate-400 text-sm text-center py-6">No bins provisioned.</p>}
+            </div>
+          </div>
+        )}
+
+        {/* ==================== ORDERS ==================== */}
+        {activeTab === 'orders' && (
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
+            <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <h3 className="font-semibold text-sm mb-3 text-slate-700">Create New Order</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input type="text" placeholder="Order ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.order_id} onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value.toUpperCase() })} />
+                <input type="text" placeholder="Customer Name" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.customer} onChange={(e) => setNewOrder({ ...newOrder, customer: e.target.value })} />
+                <button onClick={addOrder} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Creating...' : '➕ Create Order'}</button>
+              </div>
+            </div>
+
+            <h3 className="font-semibold text-sm mb-3 text-slate-600">All Orders</h3>
+            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+              {orders.map((order, index) => (
+                <div key={index} className="border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold font-mono text-slate-800">{order.order_id}</p>
+                      {order.created_at && (
+                        <span className="text-[10px] text-slate-400 font-normal bg-slate-100 px-1.5 py-0.5 rounded">
+                          {new Date(order.created_at).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 mt-1">Customer: <span className="font-medium text-slate-700">{order.customer}</span></p>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 justify-end">
+                    <div className="relative">
+                      <button 
+                        onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)} 
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${getStatusColor(order.status || 'Open')}`}
+                      >
+                        <span>{order.status || 'Open'}</span>
+                        <span className="text-[10px] opacity-60">▼</span>
+                      </button>
+                      
+                      {showStatusMenu === order.order_id && (
+                        <div className="absolute right-0 mt-2 w-40 bg-slate-900 text-slate-200 rounded-xl shadow-xl border border-slate-800 z-30 overflow-hidden">
+                          <div className="p-1 text-xs">
+                            {[
+                              { label: '📋 Open', value: 'Open' },
+                              { label: '🚚 In Transit', value: 'In Transit' },
+                              { label: '✅ Closed', value: 'Closed' }
+                            ].map(opt => (
+                              <button 
+                                key={opt.value}
+                                onClick={() => updateOrderStatus(order.id, order.order_id, opt.value)} 
+                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors"
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button onClick={() => executeItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
+                  </div>
+                </div>
+              ))}
+              {orders.length === 0 && <p className="text-slate-400 text-sm text-center py-8">No orders found.</p>}
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+export default App;
