@@ -118,7 +118,7 @@ function App() {
 
       setMessage(`ℹ️ Quantity updated! New total: ${finalQuantity} (was ${existingQty})`);
     } else {
-      // Check for SKU with different description (existing logic)
+      // Check for SKU with different description
       const existingSKU = stock.find(
         (item) => item.sku && item.sku.toString().toUpperCase() === sku
       );
@@ -144,8 +144,11 @@ function App() {
         };
       }
 
+      // === OPTION A DYNAMIC PAYLOAD ===
+      // If the row exists, switch action to UPDATE_QUANTITY and append rowNumber
       const payload = {
-        action: 'ADD_PRODUCT',
+        action: existingItem ? 'UPDATE_QUANTITY' : 'ADD_PRODUCT',
+        ...(existingItem && { rowNumber: parseInt(existingItem.id, 10) }),
         sku: sku,
         description: finalDescription,
         quantity: finalQuantity,
@@ -179,8 +182,6 @@ function App() {
       setSaving(false);
     }
   };
-
-  // ... (rest of the functions remain the same: addBin, addOrder, updateOrderStatus, etc.)
 
   const addBin = async () => {
     if (!newBin.bin_id.trim()) {
