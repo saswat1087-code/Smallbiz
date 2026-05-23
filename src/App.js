@@ -5,9 +5,12 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnK
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  
+  // Initialized safely as empty arrays to prevent mapping crashes
   const [stock, setStock] = useState([]);
   const [bins, setBins] = useState([]);
   const [orders, setOrders] = useState([]);
+  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
@@ -83,8 +86,9 @@ function App() {
       return;
     }
     
-    const binExists = bins.some(bin => 
-      bin.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
+    const safeBins = bins || [];
+    const binExists = safeBins.some(bin => 
+      bin?.bin_id && bin.bin_id.toString().toUpperCase() === newProduct.bin.trim().toUpperCase()
     );
     
     if (!binExists) {
@@ -261,6 +265,12 @@ function App() {
     }
   };
 
+  // Safe calculations for dashboard
+  const safeStock = stock || [];
+  const safeBins = bins || [];
+  const safeOrders = orders || [];
+  const totalStockCount = safeStock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -323,10 +333,10 @@ function App() {
             <h2 className="text-lg font-bold mb-5 text-slate-800">Operational Aggregates</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦', targetTab: 'stock' },
-                { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️', targetTab: 'stock' },
-                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️', targetTab: 'bins' },
-                { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋', targetTab: 'orders' }
+                { title: 'Units in Stock', count: totalStockCount, color: 'from-blue-500 to-indigo-600', icon: '📦', targetTab: 'stock' },
+                { title: 'Unique SKUs', count: safeStock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️', targetTab: 'stock' },
+                { title: 'Allocated Locations', count: safeBins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️', targetTab: 'bins' },
+                { title: 'Active Pipelines', count: safeOrders.length, color: 'from-amber-500 to-orange-600', icon: '📋', targetTab: 'orders' }
               ].map((card, idx) => (
                 <div 
                   key={idx} 
@@ -348,9 +358,27 @@ function App() {
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="SKU ID" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} />
-                <input type="text" placeholder="Description" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.description} onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} />
-                <input type="number" placeholder="Quantity" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.quantity} onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} />
+                <input 
+                  type="text" 
+                  placeholder="SKU ID" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.sku} 
+                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} 
+                />
+                <input 
+                  type="text" 
+                  placeholder="Description" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.description} 
+                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} 
+                />
+                <input 
+                  type="number" 
+                  placeholder="Quantity" 
+                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
+                  value={newProduct.quantity} 
+                  onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} 
+                />
                 
                 <div className="relative">
                   <input 
@@ -358,43 +386,74 @@ function App() {
                     placeholder="Bin Location" 
                     className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
                     value={newProduct.bin} 
-                    onChange={(e) => { setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() }); setShowBinSuggestions(true); }}
+                    onChange={(e) => {
+                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });
+                      setShowBinSuggestions(true);
+                    }}
                     onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}
                     onFocus={() => setShowBinSuggestions(true)}
                   />
-                  {showBinSuggestions && bins.length > 0 && newProduct.bin && (
+                  {showBinSuggestions && safeBins.length > 0 && newProduct.bin && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                      {bins.filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).slice(0, 5).map((bin, idx) => (
-                        <div key={idx} className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100" onMouseDown={() => { setNewProduct({ ...newProduct, bin: bin.bin_id }); setShowBinSuggestions(false); }}>
-                          <span className="font-mono">{bin.bin_id}</span>
+                      {safeBins
+                        .filter(bin => bin?.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))
+                        .slice(0, 5)
+                        .map((bin, idx) => (
+                          <div 
+                            key={idx}
+                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
+                            onMouseDown={() => {
+                              setNewProduct({ ...newProduct, bin: bin.bin_id });
+                              setShowBinSuggestions(false);
+                            }}
+                          >
+                            <span className="font-mono">{bin.bin_id}</span>
+                            <span className="text-xs text-slate-400 ml-2">({bin.zone || 'General'})</span>
+                          </div>
+                        ))}
+                      {safeBins.filter(b => b?.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (
+                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
+                          ⚠️ Bin "{newProduct.bin}" not found.
                         </div>
-                      ))}
+                      )}
                     </div>
                   )}
                 </div>
                 
                 <div className="sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300">
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment</label>
-                  <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700" onChange={(e) => setSelectedFile(e.target.files[0])} />
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment (Image, PDF, Document)</label>
+                  <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setSelectedFile(e.target.files[0])} />
                 </div>
 
-                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm">
-                  {saving ? 'Saving...' : '➕ Add Product'}
+                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
+                  {saving ? 'Uploading Payload String...' : '➕ Add Product with Attachment'}
                 </button>
               </div>
             </div>
             
             <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Stock</h3>
             <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
-              {stock.map((item, index) => (
-                <div key={index} className="py-3 flex justify-between items-center">
+              {safeStock.map((item, index) => (
+                <div key={item.id || index} className="py-3 flex justify-between items-center group">
                   <div>
-                    <p className="font-semibold text-sm">{item.description} <span className="text-xs font-mono text-slate-400">{item.sku}</span></p>
-                    <p className="text-xs text-slate-500">Qty: {item.quantity} | Bin: {item.bin}</p>
+                    <p className="font-semibold text-sm text-slate-800">
+                      {item?.description || 'Unnamed'}{' '}
+                      <span className="text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1">{item?.sku}</span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1">
+                      Quantity: <span className="text-slate-800 font-medium">{item?.quantity || 0}</span> | 
+                      Bin: <span className={`font-medium ${safeBins.some(b => b?.bin_id === item?.bin) ? 'text-emerald-600' : 'text-rose-500'}`}>{item?.bin || 'None'}</span>
+                    </p>
+                    {item?.attachment_url && (
+                      <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
+                        🔗 {item.attachment_name || 'View Attached Document'}
+                      </a>
+                    )}
                   </div>
-                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600">🗑️</button>
+                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
                 </div>
               ))}
+              {safeStock.length === 0 && <p className="text-slate-400 text-sm text-center py-6">No stock records found.</p>}
             </div>
           </div>
         )}
@@ -403,16 +462,27 @@ function App() {
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Bin Locations</h2>
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <input type="text" placeholder="Bin ID" className="border border-slate-200 p-2 text-sm rounded-lg w-full mb-2" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
-              <button onClick={addBin} className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg">Add Bin</button>
+              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Bin</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input type="text" placeholder="Bin ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
+                <input type="text" placeholder="Zone Matrix" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />
+                <button onClick={addBin} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Deploying...' : '➕ Add Bin'}</button>
+              </div>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {bins.map((bin, index) => (
-                <div key={index} className="border border-slate-100 bg-slate-50 p-4 rounded-xl flex justify-between">
-                  <p className="font-bold font-mono">{bin.bin_id}</p>
-                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600">🗑️</button>
+
+            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Bins</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
+              {safeBins.map((bin, index) => (
+                <div key={bin.id || index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start">
+                  <div>
+                    <p className="font-bold font-mono text-slate-800 text-base">{bin?.bin_id}</p>
+                    <p className="text-xs text-slate-500 mt-1">Zone: <span className="font-medium text-slate-700">{bin?.zone || 'General'}</span></p>
+                    <p className="text-xs text-slate-500">Status: <span className="font-medium text-emerald-600">{bin?.status || 'Available'}</span></p>
+                  </div>
+                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5 transition-all">🗑️</button>
                 </div>
               ))}
+              {safeBins.length === 0 && <p className="col-span-full text-slate-400 text-sm text-center py-6">No bins provisioned.</p>}
             </div>
           </div>
         )}
@@ -420,22 +490,6 @@ function App() {
         {activeTab === 'orders' && (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
-            <div className="space-y-2">
-              {orders.map((order, index) => (
-                <div key={index} className="border border-slate-100 p-4 rounded-xl flex justify-between items-center">
-                  <div>
-                    <p className="font-bold font-mono">{order.order_id}</p>
-                    <p className="text-xs text-slate-500">Customer: {order.customer}</p>
-                  </div>
-                  <button onClick={() => executeItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-rose-600">🗑️</button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </main>
-    </div>
-  );
-}
-
-export default App;
+            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
+              <h3 className="font-semibold text-sm mb-3 text-slate-700">Create New Order</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
