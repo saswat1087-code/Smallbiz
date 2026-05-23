@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// Your newly updated Google Script Web App URL
+// Your Google Script Web App URL
 const API_URL = 'https://script.google.com/macros/s/AKfycbwc8RkbjESSGsLm6rdMfZnKsWOLbk6H5Z2cq8uOe10EPxlecgxzvscV4Z-Cpu5TI-bk/exec';
 
 function App() {
@@ -78,7 +78,6 @@ function App() {
       return;
     }
     
-    // BIN VALIDATION - Check if bin exists
     if (!newProduct.bin.trim()) {
       setMessage('❌ Please enter a Bin Location');
       return;
@@ -324,12 +323,16 @@ function App() {
             <h2 className="text-lg font-bold mb-5 text-slate-800">Operational Aggregates</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦' },
-                { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️' },
-                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️' },
-                { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋' }
+                { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦', targetTab: 'stock' },
+                { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️', targetTab: 'stock' },
+                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️', targetTab: 'bins' },
+                { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋', targetTab: 'orders' }
               ].map((card, idx) => (
-                <div key={idx} className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm`}>
+                <div 
+                  key={idx} 
+                  onClick={() => setActiveTab(card.targetTab)}
+                  className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm cursor-pointer hover:opacity-90 transition-opacity`}
+                >
                   <div className="text-2xl mb-1 opacity-90">{card.icon}</div>
                   <h3 className="text-xs font-medium uppercase tracking-wider text-white/80">{card.title}</h3>
                   <p className="text-2xl font-black mt-1">{card.count}</p>
@@ -345,76 +348,38 @@ function App() {
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product</h3>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input 
-                  type="text" 
-                  placeholder="SKU ID" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
-                  value={newProduct.sku} 
-                  onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} 
-                />
-                <input 
-                  type="text" 
-                  placeholder="Description" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
-                  value={newProduct.description} 
-                  onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} 
-                />
-                <input 
-                  type="number" 
-                  placeholder="Quantity" 
-                  className="border border-slate-200 p-2 text-sm rounded-lg bg-white" 
-                  value={newProduct.quantity} 
-                  onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} 
-                />
+                <input type="text" placeholder="SKU ID" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.sku} onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value.toUpperCase() })} />
+                <input type="text" placeholder="Description" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.description} onChange={(e) => setNewProduct({ ...newProduct, description: e.target.value })} />
+                <input type="number" placeholder="Quantity" className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newProduct.quantity} onChange={(e) => setNewProduct({ ...newProduct, quantity: e.target.value })} />
                 
-                {/* Bin Input with Validation and Suggestions */}
                 <div className="relative">
                   <input 
                     type="text" 
-                    placeholder="Bin Location (must exist in Bins tab)" 
+                    placeholder="Bin Location" 
                     className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
                     value={newProduct.bin} 
-                    onChange={(e) => {
-                      setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() });
-                      setShowBinSuggestions(true);
-                    }}
+                    onChange={(e) => { setNewProduct({ ...newProduct, bin: e.target.value.toUpperCase() }); setShowBinSuggestions(true); }}
                     onBlur={() => setTimeout(() => setShowBinSuggestions(false), 200)}
                     onFocus={() => setShowBinSuggestions(true)}
                   />
                   {showBinSuggestions && bins.length > 0 && newProduct.bin && (
                     <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                      {bins
-                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase()))
-                        .slice(0, 5)
-                        .map((bin, idx) => (
-                          <div 
-                            key={idx}
-                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
-                            onMouseDown={() => {
-                              setNewProduct({ ...newProduct, bin: bin.bin_id });
-                              setShowBinSuggestions(false);
-                            }}
-                          >
-                            <span className="font-mono">{bin.bin_id}</span>
-                            <span className="text-xs text-slate-400 ml-2">({bin.zone || 'General'})</span>
-                          </div>
-                        ))}
-                      {bins.filter(b => b.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
-                          ⚠️ Bin "{newProduct.bin}" not found. Please add it in Bins tab first.
+                      {bins.filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).slice(0, 5).map((bin, idx) => (
+                        <div key={idx} className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100" onMouseDown={() => { setNewProduct({ ...newProduct, bin: bin.bin_id }); setShowBinSuggestions(false); }}>
+                          <span className="font-mono">{bin.bin_id}</span>
                         </div>
-                      )}
+                      ))}
                     </div>
                   )}
                 </div>
                 
                 <div className="sm:col-span-2 bg-white p-3 rounded-lg border border-dashed border-slate-300">
-                  <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment (Image, PDF, Document)</label>
-                  <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" onChange={(e) => setSelectedFile(e.target.files[0])} />
+                  <label className="block text-xs font-semibold text-slate-500 mb-1">Product Attachment</label>
+                  <input id="product-file-attachment" type="file" className="text-xs text-slate-600 block w-full file:mr-4 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700" onChange={(e) => setSelectedFile(e.target.files[0])} />
                 </div>
 
-                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
-                  {saving ? 'Uploading Payload String...' : '➕ Add Product with Attachment'}
+                <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm">
+                  {saving ? 'Saving...' : '➕ Add Product'}
                 </button>
               </div>
             </div>
@@ -422,29 +387,14 @@ function App() {
             <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Stock</h3>
             <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
               {stock.map((item, index) => (
-                <div key={index} className="py-3 flex justify-between items-center group">
+                <div key={index} className="py-3 flex justify-between items-center">
                   <div>
-                    <p className="font-semibold text-sm text-slate-800">
-                      {item.description || 'Unnamed'}{' '}
-                      <span className="text-xs font-mono font-normal text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1">{item.sku}</span>
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Quantity: <span className="text-slate-800 font-medium">{item.quantity || 0}</span> | 
-                      Bin: <span className={`font-medium ${bins.some(b => b.bin_id === item.bin) ? 'text-emerald-600' : 'text-rose-500'}`}>{item.bin || 'None'}</span>
-                      {!bins.some(b => b.bin_id === item.bin) && item.bin && (
-                        <span className="ml-2 text-rose-500 text-[10px]">⚠️ Bin not found</span>
-                      )}
-                    </p>
-                    {item.attachment_url && (
-                      <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
-                        🔗 {item.attachment_name || 'View Attached Document'}
-                      </a>
-                    )}
+                    <p className="font-semibold text-sm">{item.description} <span className="text-xs font-mono text-slate-400">{item.sku}</span></p>
+                    <p className="text-xs text-slate-500">Qty: {item.quantity} | Bin: {item.bin}</p>
                   </div>
-                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
+                  <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600">🗑️</button>
                 </div>
               ))}
-              {stock.length === 0 && <p className="text-slate-400 text-sm text-center py-6">No stock records found.</p>}
             </div>
           </div>
         )}
@@ -453,27 +403,16 @@ function App() {
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Bin Locations</h2>
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Bin</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="Bin ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
-                <input type="text" placeholder="Zone Matrix" className="border border-slate-200 p-2 text-sm rounded-lg" value={newBin.zone} onChange={(e) => setNewBin({ ...newBin, zone: e.target.value })} />
-                <button onClick={addBin} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Deploying...' : '➕ Add Bin'}</button>
-              </div>
+              <input type="text" placeholder="Bin ID" className="border border-slate-200 p-2 text-sm rounded-lg w-full mb-2" value={newBin.bin_id} onChange={(e) => setNewBin({ ...newBin, bin_id: e.target.value.toUpperCase() })} />
+              <button onClick={addBin} className="w-full bg-blue-600 text-white text-sm py-2 rounded-lg">Add Bin</button>
             </div>
-
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Bins</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto pr-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               {bins.map((bin, index) => (
-                <div key={index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start">
-                  <div>
-                    <p className="font-bold font-mono text-slate-800 text-base">{bin.bin_id}</p>
-                    <p className="text-xs text-slate-500 mt-1">Zone: <span className="font-medium text-slate-700">{bin.zone || 'General'}</span></p>
-                    <p className="text-xs text-slate-500">Status: <span className="font-medium text-emerald-600">{bin.status || 'Available'}</span></p>
-                  </div>
-                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5 transition-all">🗑️</button>
+                <div key={index} className="border border-slate-100 bg-slate-50 p-4 rounded-xl flex justify-between">
+                  <p className="font-bold font-mono">{bin.bin_id}</p>
+                  <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600">🗑️</button>
                 </div>
               ))}
-              {bins.length === 0 && <p className="col-span-full text-slate-400 text-sm text-center py-6">No bins provisioned.</p>}
             </div>
           </div>
         )}
@@ -481,67 +420,16 @@ function App() {
         {activeTab === 'orders' && (
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
-            <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Create New Order</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <input type="text" placeholder="Order ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.order_id} onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value.toUpperCase() })} />
-                <input type="text" placeholder="Customer Name" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.customer} onChange={(e) => setNewOrder({ ...newOrder, customer: e.target.value })} />
-                <button onClick={addOrder} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Creating...' : '➕ Create Order'}</button>
-              </div>
-            </div>
-
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">All Orders</h3>
-            <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+            <div className="space-y-2">
               {orders.map((order, index) => (
-                <div key={index} className="border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                <div key={index} className="border border-slate-100 p-4 rounded-xl flex justify-between items-center">
                   <div>
-                    <div className="flex items-center gap-2">
-                      <p className="font-bold font-mono text-slate-800">{order.order_id}</p>
-                      {order.created_at && (
-                        <span className="text-[10px] text-slate-400 font-normal bg-slate-100 px-1.5 py-0.5 rounded">
-                          {new Date(order.created_at).toLocaleDateString()}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-slate-500 mt-1">Customer: <span className="font-medium text-slate-700">{order.customer}</span></p>
+                    <p className="font-bold font-mono">{order.order_id}</p>
+                    <p className="text-xs text-slate-500">Customer: {order.customer}</p>
                   </div>
-                  
-                  <div className="flex items-center gap-2 justify-end">
-                    <div className="relative">
-                      <button 
-                        onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)} 
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${getStatusColor(order.status || 'Open')}`}
-                      >
-                        <span>{order.status || 'Open'}</span>
-                        <span className="text-[10px] opacity-60">▼</span>
-                      </button>
-                      
-                      {showStatusMenu === order.order_id && (
-                        <div className="absolute right-0 mt-2 w-40 bg-slate-900 text-slate-200 rounded-xl shadow-xl border border-slate-800 z-30 overflow-hidden">
-                          <div className="p-1 text-xs">
-                            {[
-                              { label: '📋 Open', value: 'Open' },
-                              { label: '🚚 In Transit', value: 'In Transit' },
-                              { label: '✅ Closed', value: 'Closed' }
-                            ].map(opt => (
-                              <button 
-                                key={opt.value}
-                                onClick={() => updateOrderStatus(order.id, order.order_id, opt.value)} 
-                                className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-colors"
-                              >
-                                {opt.label}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    
-                    <button onClick={() => executeItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
-                  </div>
+                  <button onClick={() => executeItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-rose-600">🗑️</button>
                 </div>
               ))}
-              {orders.length === 0 && <p className="text-slate-400 text-sm text-center py-8">No orders found.</p>}
             </div>
           </div>
         )}
