@@ -24,7 +24,11 @@ function App() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [chatLog, setChatLog] = useState([
-    { role: 'assistant', text: 'Hello! I am your Gemini WMS Analyst. Ask me anything like "Provide stock inventory totals report", "Show active pipelines by type", or "Analyze bin storage locations".', hasChart: false }
+    { 
+      role: 'assistant', 
+      text: 'Hello! I am your interactive Gemini WMS Co-Pilot. Not only can I analyze your records, but I can also help modify them! \n\nTry asking me actions like:\n• "Create product SKU-HONEY (Honey Jar) with quantity 20 in Bin A-101"\n• "Add a new bin B-205 in Zone B"\n• "Route an outbound order ORD-707 for customer Alice with 5 apples from Bin A-102"', 
+      hasChart: false 
+    }
   ]);
 
   // === CUSTOM NON-BLOCKING CONFIRMATION MODAL STATE ===
@@ -94,15 +98,86 @@ function App() {
     });
   };
 
-  // === TRIGGER GEMINI ANALYTICS ===
-  const submitAiQuery = async (e) => {
-    e.preventDefault();
-    if (!aiPrompt.trim()) return;
+  // === DYNAMIC AI AGENT DISPATCH ROUTER ===
+  const handleAiProposedAction = async (action, payload) => {
+    setSaving(true);
+    setMessage('⚙️ Executing AI proposed database action...');
+    try {
+      let bodyPayload = {};
+      
+      if (action === 'ADD_PRODUCT') {
+        bodyPayload = {
+          action: 'ADD_PRODUCT',
+          sku: payload.sku.toUpperCase(),
+          description: payload.description || 'AI Created Item',
+          quantity: parseInt(payload.quantity, 10) || 0,
+          bin: payload.bin.toUpperCase()
+        };
+      } else if (action === 'ADD_BIN') {
+        bodyPayload = {
+          action: 'ADD_BIN',
+          bin_id: payload.bin_id.toUpperCase(),
+          zone: payload.zone || 'General',
+          status: 'Available'
+        };
+      } else if (action === 'ADD_ORDER') {
+        bodyPayload = {
+          action: 'ADD_ORDER',
+          order_id: payload.order_id.toUpperCase(),
+          customer: payload.customer || 'AI Agent Client',
+          type: payload.type || 'Inbound',
+          sku: payload.sku.toUpperCase(),
+          quantity: parseInt(payload.quantity, 10) || 0,
+          bin: payload.bin.toUpperCase(),
+          status: 'Open',
+          created_at: new Date().toISOString()
+        };
+      }
 
-    const userQuery = aiPrompt.trim();
-    setChatLog(prev => [...prev, { role: 'user', text: userQuery }]);
+      const res = await fetch(API_URL, {
+        redirect: 'follow',
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(bodyPayload)
+      });
+      if (!res.ok) throw new Error();
+
+      setMessage(`✅ AI Action executed successfully: ${action}`);
+      setChatLog(prev => [...prev, {
+        role: 'assistant',
+        text: `🎉 Successfully completed database injection! I have executed the proposed ${action} action directly inside your Google Spreadsheet and refreshed all visual matrix logs.`
+      }]);
+      await loadData();
+    } catch (err) {
+      setMessage('❌ Failed to execute proposed AI action');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // === AUXILIARY LLM TRIGGER ROUTER ===
+  const triggerCoPilotQuery = async (customPrompt, displayUserQueryText) => {
+    setActiveTab('reporting');
+    setChatLog(prev => [...prev, { role: 'user', text: displayUserQueryText || customPrompt }]);
     setAiPrompt('');
     setAiLoading(true);
+
+    const agentPromptInjection = 
+      `${customPrompt}\n\n` +
+      `[AI AGENT CAPABILITY MANUAL]\n` +
+      `You have the direct authority to propose database actions (adding products, creating bins, or staging orders). ` +
+      `If the user explicitly requests a database addition, subtraction, creation, or shipment change, analyze their variables and return the corresponding action and actionPayload in your structured JSON response. ` +
+      `Supported actions and precise schemas:\n` +
+      `1. Action: "ADD_PRODUCT" -> payload: { "sku": string, "description": string, "quantity": number, "bin": string }\n` +
+      `2. Action: "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n` +
+      `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n\n` +
+      `Return your output matches the core JSON response template:\n` +
+      `{\n` +
+      `  "text": "Your natural language response explaining what you did, what you prepared, or answering standard prompts.",\n` +
+      `  "hasChart": false,\n` +
+      `  "action": "ADD_PRODUCT" | "ADD_BIN" | "ADD_ORDER" | null,\n` +
+      `  "actionPayload": { ... corresponding matching parameters object ... } | null\n` +
+      `}`;
 
     try {
       const res = await fetch(API_URL, {
@@ -111,7 +186,7 @@ function App() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'ANALYZE_SHEET',
-          prompt: userQuery
+          prompt: agentPromptInjection
         })
       });
 
@@ -121,7 +196,7 @@ function App() {
       if (data.status === 'error') {
         setChatLog(prev => [...prev, {
           role: 'assistant',
-          text: `❌ Gemini Backend Error: ${data.message || 'Error occurred while analyzing sheets.'}\n\nPlease verify that your Google Sheet contains valid database entries.`,
+          text: `❌ Gemini Backend Error: ${data.message || 'Error occurred while analyzing sheets.'}`,
           hasChart: false
         }]);
       } else if (data.text) {
@@ -129,12 +204,14 @@ function App() {
           role: 'assistant',
           text: data.text,
           hasChart: !!data.hasChart,
-          chartData: data.chartData || []
+          chartData: data.chartData || [],
+          action: data.action || null,
+          actionPayload: data.actionPayload || null
         }]);
       } else {
         setChatLog(prev => [...prev, {
           role: 'assistant',
-          text: "⚠️ Gemini returned an empty text summary. Try asking in a different format, such as: 'Show stock quantities matching active SKUs.'",
+          text: "⚠️ Gemini returned an empty summary. Try reformatting your request.",
           hasChart: false
         }]);
       }
@@ -142,12 +219,19 @@ function App() {
       console.error(err);
       setChatLog(prev => [...prev, { 
         role: 'assistant', 
-        text: `❌ Connection failure. Make sure your Apps Script Web App is running with Me/Anyone authorization privileges and that you redeployed the script correctly.`, 
+        text: `❌ Connection failure. Make sure your Apps Script is deployed under "Anyone".`, 
         hasChart: false 
       }]);
     } finally {
       setAiLoading(false);
     }
+  };
+
+  // === TRIGGER GEMINI ANALYTICS ===
+  const submitAiQuery = (e) => {
+    e.preventDefault();
+    if (!aiPrompt.trim()) return;
+    triggerCoPilotQuery(aiPrompt.trim(), aiPrompt.trim());
   };
 
   const addProduct = async () => {
@@ -328,9 +412,9 @@ function App() {
     }
   };
 
-  const getMaxChartValue = (chartData) => {
-    if (!chartData || chartData.length === 0) return 1;
-    return Math.max(...chartData.map(d => Number(d.value) || 0), 1);
+  const getMaxChartValue = (chartLog) => {
+    if (!chartLog || chartLog.length === 0) return 1;
+    return Math.max(...chartLog.map(d => Number(d.value) || 0), 1);
   };
 
   if (loading) {
@@ -403,7 +487,7 @@ function App() {
             { id: 'stock', label: 'Stock', icon: '📦' },
             { id: 'bins', label: 'Bins', icon: '🗑️' },
             { id: 'orders', label: 'Orders', icon: '📝' },
-            { id: 'reporting', label: 'AI Reports', icon: '🤖' }
+            { id: 'reporting', label: 'AI Co-Pilot', icon: '🤖' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -499,11 +583,21 @@ function App() {
                     </div>
                     <p className="text-xs text-slate-500 mt-1">Quantity: {item.quantity || 0} | Bin: {item.bin || 'None'}</p>
                     
-                    {item.attachment_url && (
-                      <a href={item.attachment_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md mt-1.5 transition-all">
-                        📎 View {item.attachment_name || 'Attachment'}
-                      </a>
-                    )}
+                    <div className="flex items-center gap-2 mt-2">
+                      {item.attachment_url && (
+                        <a href={item.attachment_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-all">
+                          📎 View Attachment
+                        </a>
+                      )}
+                      
+                      {/* LLM POWERED STOCK COMPASS ACTION */}
+                      <button 
+                        onClick={() => triggerCoPilotQuery(`Analyze historical demand velocity, and restock necessity suggestions for our SKU: ${item.sku}. The description of this item is ${item.description || 'N/A'}. Its current physical stock quantity sitting in Bin ${item.bin} is ${item.quantity}. Give a clear restock warning and velocity categorization.`, `Analyze WMS SKU demand velocity for ${item.sku}`)}
+                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition-all"
+                      >
+                        ✨ Analyze Demand & Restock
+                      </button>
+                    </div>
                   </div>
                   <button onClick={() => requestItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2">🗑️</button>
                 </div>
@@ -585,6 +679,15 @@ function App() {
                     <div className="mt-1 flex gap-3 text-xs font-mono text-slate-600">
                       <span>SKU: {order.sku}</span> | <span>QTY: {order.quantity}</span> | <span>BIN: {order.bin}</span>
                     </div>
+                    <div className="mt-2.5 flex items-center gap-2">
+                      {/* LLM POWERED CORRESPONDENCE DISPATCH INJECTION */}
+                      <button 
+                        onClick={() => triggerCoPilotQuery(`Draft a highly professional supplier dispatch, arrival notice, or purchase fulfillment notification email corresponding to WMS Order ID: ${order.order_id}. This order is flagged as ${order.type} for customer/vendor: ${order.customer}. It comprises ${order.quantity} units of SKU ${order.sku} sitting inside Bin ${order.bin}. Write with perfect clear salutations, tracking reference lines, and warehouse coordination details.`, `Draft WMS notification email for Order ${order.order_id}`)}
+                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-all border border-indigo-200/50"
+                      >
+                        ✨ Draft dispatch/inbound email
+                      </button>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="relative">
@@ -605,33 +708,64 @@ function App() {
           </div>
         )}
 
-        {/* AI REPORTING STUDIO TAB */}
+        {/* AI CO-PILOT TAB */}
         {activeTab === 'reporting' && (
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn">
             
             {/* Options Quick Actions Panel */}
             <div className="md:col-span-1 bg-gradient-to-b from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-sm h-fit animate-slideUp">
               <div className="text-xl mb-2">🤖</div>
-              <h2 className="text-base font-bold tracking-tight text-white">Gemini Report Engine</h2>
-              <p className="text-xs text-slate-400 mt-1 mb-4">Ask Gemini to audit your live single-sheet database records and compile interactive data charts.</p>
+              <h2 className="text-base font-bold tracking-tight text-white">Gemini AI Co-Pilot</h2>
+              <p className="text-xs text-slate-400 mt-1 mb-4">Command your intelligent co-pilot to audit live logs, compile data charts, or **create new stock, bins, and orders!**</p>
               
               <div className="space-y-2 text-xs font-medium text-slate-300">
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-800 transition-all" onClick={() => setAiPrompt("Provide inventory report breakdown matching quantity per SKU")}>📈 "Provide inventory report breakdown matching quantity per SKU"</p>
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-800 transition-all" onClick={() => setAiPrompt("Show a breakdown report chart of order types")}>📊 "Show a breakdown report chart of order types"</p>
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Audit our storage bin allocations distribution")}>🗑️ "Audit our storage bin allocations distribution"</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101")}>📦 "Add product SKU-BANANA (Fresh Banana)..."</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>🗑️ "Create a new bin B-205 in Zone B"</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Route an outbound order ORD-501 for customer AppleStore with 5 units of SKU-BANANA from Bin A-101")}>📝 "Route an outbound order ORD-501..."</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Audit the sheet for negative quantities, orders that exceed available inventory, or unregistered bin destinations.")}>🔍 "Audit for negative quantities, stock exceptions..."</p>
               </div>
             </div>
 
             {/* Main Interactive Chat Area */}
-            <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden h-[520px]">
-              <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 font-semibold text-sm text-slate-700">Analytics Data Stream Interface</div>
+            <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden h-[540px]">
+              <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 font-semibold text-sm text-slate-700">Co-Pilot Command Deck</div>
               
               <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/40">
                 {chatLog.map((chat, idx) => (
                   <div key={idx} className={`flex flex-col ${chat.role === 'user' ? 'items-end animate-slideUp' : 'items-start animate-fadeIn'}`}>
-                    <div className={`max-w-[85%] rounded-2xl p-4 text-sm shadow-xs ${chat.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
-                      <p className="leading-relaxed whitespace-pre-wrap">{chat.text}</p>
+                    <div className={`max-w-[85%] rounded-2xl p-4 text-sm shadow-xs space-y-2 ${chat.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
+                      <p className="leading-relaxed whitespace-pre-wrap text-xs md:text-sm">{chat.text}</p>
                       
+                      {/* AI Proposed Modification Interceptor Option */}
+                      {chat.action && chat.actionPayload && (
+                        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 text-slate-800 rounded-xl space-y-2">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-blue-600 font-bold text-xs">🤖 Proposed Database Change</span>
+                          </div>
+                          <div className="text-[11px] font-mono bg-white p-2 rounded border border-blue-100 max-h-40 overflow-auto text-slate-900">
+                            <p><strong>Action:</strong> {chat.action}</p>
+                            <p className="mt-1"><strong>Payload:</strong> {JSON.stringify(chat.actionPayload, null, 2)}</p>
+                          </div>
+                          <button 
+                            disabled={saving}
+                            onClick={() => {
+                              setConfirmModal({
+                                isOpen: true,
+                                title: 'Approve AI Database Action',
+                                message: `Do you want to authorize your Co-Pilot to execute this structured "${chat.action}" command on your sheet database?`,
+                                onConfirm: () => {
+                                  setConfirmModal(prev => ({ ...prev, isOpen: false }));
+                                  handleAiProposedAction(chat.action, chat.actionPayload);
+                                }
+                              });
+                            }}
+                            className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold py-1.5 px-3 rounded-lg transition-all shadow-xs"
+                          >
+                            {saving ? 'Processing Action...' : '✓ Approve & Write to Sheet'}
+                          </button>
+                        </div>
+                      )}
+
                       {chat.hasChart && chat.chartData && chat.chartData.length > 0 && (
                         <div className="mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 w-full text-slate-900 shadow-xs">
                           <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">AI Computed Data Visualization</h4>
@@ -666,7 +800,7 @@ function App() {
               <form onSubmit={submitAiQuery} className="border-t border-slate-100 p-3 bg-white flex gap-2">
                 <input
                   type="text"
-                  placeholder='Ask Gemini analyst... (e.g. "Analyze the sheet and show a chart")'
+                  placeholder='Command your Co-Pilot... (e.g. "Create product SKU-HONEY with quantity 50 in Bin A-101")'
                   className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 bg-slate-50/50"
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
