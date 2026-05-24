@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
-// Updated deployment API URL string connection pointer
-const API_URL = 'https://script.google.com/macros/s/AKfycbxrbJckTbX8uzUCrvNiUXTXMDD6ZVKhvvzXA7oUOCorxT1W-H3PuWfJpnfOE0bsSBjT/exec';
+// Final updated deployment URL connection string pointer
+const API_URL = 'https://script.google.com/macros/s/AKfycbw576gN3CXv0-qfIJVGtmCsW7nPkS5z7pSTMgKmY5WyCe48CTV1RlsTKwem1h7VGqxM/exec';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -13,11 +13,14 @@ function App() {
   const [message, setMessage] = useState('');
   const [showStatusMenu, setShowStatusMenu] = useState(null);
   const [showBinSuggestions, setShowBinSuggestions] = useState(false);
+  const [showOrderBinSuggestions, setShowOrderBinSuggestions] = useState(false);
 
   const [newProduct, setNewProduct] = useState({ sku: '', description: '', quantity: '', bin: '' });
   const [selectedFile, setSelectedFile] = useState(null);
   const [newBin, setNewBin] = useState({ bin_id: '', zone: '' });
-  const [newOrder, setNewOrder] = useState({ order_id: '', customer: '' });
+  
+  // Manifest structural state with type handling variables
+  const [newOrder, setNewOrder] = useState({ order_id: '', customer: '', type: 'Inbound', sku: '', quantity: '', bin: '' });
 
   const loadData = async () => {
     try {
@@ -27,6 +30,7 @@ function App() {
       const allData = await response.json();
       const dataArray = Array.isArray(allData) ? allData : [];
 
+      // Filter rows representing baseline warehouse floor static inventory
       const stockData = dataArray
         .filter(row => row && row.sku && row.sku.toString().trim() !== '' && !row.order_id)
         .map(row => ({ ...row, id: row.__row_number__ }));
@@ -35,6 +39,7 @@ function App() {
         .filter(row => row && row.bin_id && row.bin_id.toString().trim() !== '')
         .map(row => ({ ...row, id: row.__row_number__ }));
 
+      // Extract rows explicitly containing structured order parameters
       const ordersData = dataArray
         .filter(row => row && row.order_id && row.order_id.toString().trim() !== '')
         .map(row => ({ ...row, id: row.__row_number__ }));
@@ -91,18 +96,16 @@ function App() {
         item.bin.toString().toUpperCase() === bin
     );
 
-    // If it doesn't exist, description becomes mandatory
+    // Skip description requirement checking if item matches an existing coordinate profile
     if (!existingItem && !description) {
       setMessage('❌ Please enter a Description');
       return;
     }
-    
     if (!bin) {
       setMessage('❌ Please enter a Bin Location');
       return;
     }
 
-    // === BIN VALIDATION ===
     const binExists = bins.some(
       (b) => b.bin_id && b.bin_id.toString().toUpperCase() === bin
     );
@@ -115,14 +118,11 @@ function App() {
     let finalQuantity = quantityToAdd;
 
     if (existingItem) {
-      // Same SKU + Same Bin → Accumulate quantity, skip description checks entirely
       const existingQty = parseInt(existingItem.quantity, 10) || 0;
       finalQuantity = existingQty + quantityToAdd;
       finalDescription = existingItem.description || description;
-
       setMessage(`ℹ️ Quantity updated! New total: ${finalQuantity} (was ${existingQty})`);
     } else {
-      // New placement: Auto-fill description if the SKU exists elsewhere in the facility
       const existingSKU = stock.find(
         (item) => item.sku && item.sku.toString().toUpperCase() === sku
       );
@@ -138,7 +138,6 @@ function App() {
     setSaving(true);
     try {
       let filePayload = {};
-
       if (selectedFile) {
         const base64String = await convertFileToBase64(selectedFile);
         filePayload = {
@@ -148,7 +147,6 @@ function App() {
         };
       }
 
-      // === OPTION A DYNAMIC PAYLOAD ===
       const payload = {
         action: existingItem ? 'UPDATE_QUANTITY' : 'ADD_PRODUCT',
         ...(existingItem && { rowNumber: parseInt(existingItem.id, 10) }),
@@ -170,14 +168,12 @@ function App() {
 
       setNewProduct({ sku: '', description: '', quantity: '', bin: '' });
       setSelectedFile(null);
-
       const fileInput = document.getElementById('product-file-attachment');
       if (fileInput) fileInput.value = '';
 
       if (!message.includes('updated') && !message.includes('auto-corrected')) {
         setMessage('✅ Product added successfully!');
       }
-
       await loadData();
     } catch (err) {
       setMessage('❌ Failed to save product data');
@@ -216,10 +212,24 @@ function App() {
   };
 
   const addOrder = async () => {
-    if (!newOrder.order_id.trim() || !newOrder.customer.trim()) {
-      setMessage('❌ Please input Order ID and Customer Name');
+    const { order_id, customer, type, sku, quantity, bin } = newOrder;
+    
+    if (!order_id.trim() || !customer.trim() || !sku.trim() || !quantity || !bin.trim()) {
+      setMessage('❌ Complete all input items (Order ID, Customer, SKU, Qty, Bin)');
       return;
     }
+
+    // Outbound balance cross-checks: Provide explicit warnings for negative variance workflows
+    if (type === 'Outbound') {
+      const match = stock.find(i => i.sku === sku.toUpperCase() && i.bin === bin.toUpperCase());
+      const availableQty = match ? (parseInt(match.quantity, 10) || 0) : 0;
+      if (availableQty < parseInt(quantity, 10)) {
+        if (!window.confirm(`⚠️ Requested outbound fulfillment (${quantity}) exceeds stored stock numbers inside ${bin.toUpperCase()} (${availableQty}). Route transaction anyway?`)) {
+          return;
+        }
+      }
+    }
+
     setSaving(true);
     try {
       const res = await fetch(API_URL, {
@@ -228,14 +238,18 @@ function App() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'ADD_ORDER',
-          order_id: newOrder.order_id.trim().toUpperCase(),
-          customer: newOrder.customer.trim(),
+          order_id: order_id.trim().toUpperCase(),
+          customer: customer.trim(),
+          type: type,
+          sku: sku.trim().toUpperCase(),
+          quantity: parseInt(quantity, 10) || 0,
+          bin: bin.trim().toUpperCase(),
           status: 'Open',
           created_at: new Date().toISOString()
         })
       });
       if (!res.ok) throw new Error();
-      setNewOrder({ order_id: '', customer: '' });
+      setNewOrder({ order_id: '', customer: '', type: 'Inbound', sku: '', quantity: '', bin: '' });
       setMessage('✅ Order generated successfully!');
       await loadData();
     } catch {
@@ -263,7 +277,7 @@ function App() {
         })
       });
       if (!res.ok) throw new Error();
-      setMessage(`✅ Order ${orderId} status changed to: ${newStatus}`);
+      setMessage(`✅ Order ${orderId} changed to: ${newStatus}`);
       await loadData();
       setShowStatusMenu(null);
     } catch {
@@ -449,11 +463,6 @@ function App() {
                             <span className="text-xs text-slate-400 ml-2">({bin.zone || 'General'})</span>
                           </div>
                         ))}
-                      {bins.filter(b => b.bin_id && b.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).length === 0 && (
-                        <div className="px-3 py-2 text-sm text-amber-600 bg-amber-50">
-                          ⚠️ Bin "{newProduct.bin}" not found. Please add it in Bins tab first.
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>
@@ -481,20 +490,11 @@ function App() {
                     <p className="text-xs text-slate-500 mt-1">
                       Quantity: <span className="text-slate-800 font-medium">{item.quantity || 0}</span> | 
                       Bin: <span className={`font-medium ${bins.some(b => b.bin_id === item.bin) ? 'text-emerald-600' : 'text-rose-500'}`}>{item.bin || 'None'}</span>
-                      {!bins.some(b => b.bin_id === item.bin) && item.bin && (
-                        <span className="ml-2 text-rose-500 text-[10px]">⚠️ Bin not found</span>
-                      )}
                     </p>
-                    {item.attachment_url && (
-                      <a href={item.attachment_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline mt-1 bg-blue-50 px-2 py-0.5 rounded font-medium">
-                        🔗 {item.attachment_name || 'View Attached Document'}
-                      </a>
-                    )}
                   </div>
                   <button onClick={() => executeItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2 transition-all">🗑️</button>
                 </div>
               ))}
-              {stock.length === 0 && <p className="text-slate-400 text-sm text-center py-6">No stock records found.</p>}
             </div>
           </div>
         )}
@@ -524,7 +524,6 @@ function App() {
                   <button onClick={() => executeItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5 transition-all">🗑️</button>
                 </div>
               ))}
-              {bins.length === 0 && <p className="col-span-full text-slate-400 text-sm text-center py-6">No bins provisioned.</p>}
             </div>
           </div>
         )}
@@ -534,28 +533,82 @@ function App() {
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
-              <h3 className="font-semibold text-sm mb-3 text-slate-700">Create New Order</h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <h3 className="font-semibold text-sm mb-3 text-slate-700">Create New Order Pipeline</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                
                 <input type="text" placeholder="Order ID" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.order_id} onChange={(e) => setNewOrder({ ...newOrder, order_id: e.target.value.toUpperCase() })} />
                 <input type="text" placeholder="Customer Name" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.customer} onChange={(e) => setNewOrder({ ...newOrder, customer: e.target.value })} />
-                <button onClick={addOrder} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">{saving ? 'Creating...' : '➕ Create Order'}</button>
+                
+                <select className="border border-slate-200 p-2 text-sm rounded-lg bg-white" value={newOrder.type} onChange={(e) => setNewOrder({ ...newOrder, type: e.target.value })}>
+                  <option value="Inbound">📥 Inbound (Add Stock)</option>
+                  <option value="Outbound">📤 Outbound (Remove Stock)</option>
+                  <option value="Internal">🔄 Internal Transfer</option>
+                </select>
+
+                <input type="text" placeholder="Target SKU" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.sku} onChange={(e) => setNewOrder({ ...newOrder, sku: e.target.value.toUpperCase() })} />
+                <input type="number" placeholder="Quantity Amount" className="border border-slate-200 p-2 text-sm rounded-lg" value={newOrder.quantity} onChange={(e) => setNewOrder({ ...newOrder, quantity: e.target.value })} />
+                
+                <div className="relative">
+                  <input 
+                    type="text" 
+                    placeholder="Bin Target location" 
+                    className="border border-slate-200 p-2 text-sm rounded-lg bg-white w-full" 
+                    value={newOrder.bin} 
+                    onChange={(e) => {
+                      setNewOrder({ ...newOrder, bin: e.target.value.toUpperCase() });
+                      setShowOrderBinSuggestions(true);
+                    }}
+                    onBlur={() => setTimeout(() => setShowOrderBinSuggestions(false), 200)}
+                    onFocus={() => setShowOrderBinSuggestions(true)}
+                  />
+                  {showOrderBinSuggestions && bins.length > 0 && newOrder.bin && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                      {bins
+                        .filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newOrder.bin.toUpperCase()))
+                        .slice(0, 5)
+                        .map((bin, idx) => (
+                          <div 
+                            key={idx}
+                            className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0"
+                            onMouseDown={() => {
+                              setNewOrder({ ...newOrder, bin: bin.bin_id });
+                              setShowOrderBinSuggestions(false);
+                            }}
+                          >
+                            <span className="font-mono">{bin.bin_id}</span>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+
+                <button onClick={addOrder} disabled={saving} className="sm:col-span-2 md:col-span-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium text-sm py-2.5 px-4 rounded-lg shadow-sm transition-all">
+                  {saving ? 'Creating pipeline records...' : '➕ Create Order with Allocation'}
+                </button>
               </div>
             </div>
 
-            <h3 className="font-semibold text-sm mb-3 text-slate-600">All Orders</h3>
+            <h3 className="font-semibold text-sm mb-3 text-slate-600">All Active & Historic Manifests</h3>
             <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
               {orders.map((order, index) => (
-                <div key={index} className="border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3">
+                <div key={index} className="border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-white shadow-xs">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-bold font-mono text-slate-800">{order.order_id}</p>
-                      {order.created_at && (
-                        <span className="text-[10px] text-slate-400 font-normal bg-slate-100 px-1.5 py-0.5 rounded">
-                          {new Date(order.created_at).toLocaleDateString()}
-                        </span>
-                      )}
+                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                        order.type === 'Inbound' ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' :
+                        order.type === 'Outbound' ? 'bg-rose-50 text-rose-700 border border-rose-200' : 
+                        'bg-purple-50 text-purple-700 border border-purple-200'
+                      }`}>
+                        {order.type || 'Inbound'}
+                      </span>
                     </div>
                     <p className="text-xs text-slate-500 mt-1">Customer: <span className="font-medium text-slate-700">{order.customer}</span></p>
+                    <div className="mt-1.5 flex flex-wrap gap-x-3 text-xs bg-slate-50 p-1.5 rounded border border-slate-100 font-mono">
+                      <div>SKU: <span className="text-blue-600 font-bold">{order.sku || 'N/A'}</span></div>
+                      <div>QTY: <span className="text-slate-800 font-bold">{order.quantity || 0}</span></div>
+                      <div>BIN: <span className="text-indigo-600 font-bold">{order.bin || 'N/A'}</span></div>
+                    </div>
                   </div>
                   
                   <div className="flex items-center gap-2 justify-end">
@@ -593,7 +646,7 @@ function App() {
                   </div>
                 </div>
               ))}
-              {orders.length === 0 && <p className="text-slate-400 text-sm text-center py-8">No orders found.</p>}
+              {orders.length === 0 && <p className="text-slate-400 text-sm text-center py-8">No order manifests recorded.</p>}
             </div>
           </div>
         )}
