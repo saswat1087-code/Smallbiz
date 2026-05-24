@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 
-// Live production Web App URL deployed from your Google Apps Script environment
+// Consolidated live deployment URL configured from your latest Google Apps Script environment pointer
 const API_URL = 'https://script.google.com/macros/s/AKfycbyNORlBxr5etju9KHNCwXauAsHDPxN07ujb-FcGlSHOeK1clYe-YOlHGiEbIzqUK3Mm/exec';
 
 function App() {
@@ -345,7 +345,7 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 animate-fadeIn">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       
       {/* BRAND HEADER BAR */}
       <header className="bg-slate-900 text-white shadow-md">
@@ -368,10 +368,10 @@ function App() {
         </div>
       )}
 
-      {/* PREMIUM IN-APP MODAL */}
+      {/* PREMIUM IN-APP MODAL (Saves native dialog lockouts) */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-100 animate-slideUp">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-100">
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <span>⚠️</span> {confirmModal.title}
             </h3>
@@ -422,16 +422,21 @@ function App() {
             <h2 className="text-lg font-bold mb-5 text-slate-800">Operational Aggregates</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦' },
-                { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️' },
-                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️' },
-                { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋' }
+                { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦', targetTab: 'stock' },
+                { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️', targetTab: 'stock' },
+                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️', targetTab: 'bins' },
+                { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋', targetTab: 'orders' }
               ].map((card, idx) => (
-                <div key={idx} className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm`}>
+                <button
+                  key={idx}
+                  onClick={() => setActiveTab(card.targetTab)}
+                  className={`bg-gradient-to-br ${card.color} rounded-xl p-5 text-white shadow-sm hover:shadow-lg hover:scale-[1.01] active:scale-[0.99] transition-all text-left w-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500`}
+                >
                   <div className="text-2xl mb-1 opacity-90">{card.icon}</div>
                   <h3 className="text-xs font-medium uppercase tracking-wider text-white/80">{card.title}</h3>
                   <p className="text-2xl font-black mt-1">{card.count}</p>
-                </div>
+                  <span className="text-[10px] text-white/60 mt-2 block underline">Click to view details</span>
+                </button>
               ))}
             </div>
           </div>
@@ -439,7 +444,7 @@ function App() {
 
         {/* STOCK INVENTORY TAB */}
         {activeTab === 'stock' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Inventory Index</h2>
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Product</h3>
@@ -465,27 +470,15 @@ function App() {
                   )}
                 </div>
 
-                {/* FILE ATTACHMENT DRAG/DROP FIELD */}
+                {/* ATTACHMENT SELECTION AREA */}
                 <div className="sm:col-span-2">
                   <div className="flex items-center gap-3">
-                    <input 
-                      type="file" 
-                      className="hidden" 
-                      id="file-upload" 
-                      onChange={(e) => setSelectedFile(e.target.files[0])} 
-                    />
-                    <label 
-                      htmlFor="file-upload" 
-                      className="flex-1 border border-dashed border-slate-300 rounded-lg p-2.5 text-center text-xs text-slate-600 hover:bg-slate-50 cursor-pointer transition-all truncate"
-                    >
+                    <input type="file" className="hidden" id="file-upload" onChange={(e) => setSelectedFile(e.target.files[0])} />
+                    <label htmlFor="file-upload" className="flex-1 border border-dashed border-slate-300 rounded-xl p-2.5 text-center text-xs text-slate-600 hover:bg-slate-50 cursor-pointer transition-all truncate">
                       {selectedFile ? `📎 ${selectedFile.name}` : '📁 Attach Product Document or Image (Optional)'}
                     </label>
                     {selectedFile && (
-                      <button 
-                        type="button"
-                        onClick={() => setSelectedFile(null)} 
-                        className="text-xs font-semibold text-rose-500 hover:text-rose-700 bg-rose-50 p-2.5 rounded-lg border border-rose-200"
-                      >
+                      <button type="button" onClick={() => setSelectedFile(null)} className="text-xs font-semibold text-rose-500 hover:text-rose-700 bg-rose-50 p-2.5 rounded-lg border border-rose-200">
                         Clear
                       </button>
                     )}
@@ -495,26 +488,19 @@ function App() {
                 <button onClick={addProduct} disabled={saving} className="sm:col-span-2 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2.5 px-4 rounded-lg shadow-sm">{saving ? 'Uploading...' : '➕ Add Product'}</button>
               </div>
             </div>
-            
             <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Stock</h3>
             <div className="divide-y divide-slate-100 max-h-96 overflow-y-auto pr-1">
               {stock.map((item, index) => (
-                <div key={index} className="py-3 flex justify-between items-center animate-fadeIn">
+                <div key={index} className="py-3 flex justify-between items-center">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-semibold text-sm text-slate-800">{item.description || 'Unnamed'}</p>
-                      <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">{item.sku}</span>
+                      <span className="text-xs font-mono text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded ml-1">{item.sku}</span>
                     </div>
                     <p className="text-xs text-slate-500 mt-1">Quantity: {item.quantity || 0} | Bin: {item.bin || 'None'}</p>
                     
-                    {/* ATTACHMENT LINK DISPLAY */}
                     {item.attachment_url && (
-                      <a 
-                        href={item.attachment_url} 
-                        target="_blank" 
-                        rel="noopener noreferrer" 
-                        className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md mt-1.5 transition-all"
-                      >
+                      <a href={item.attachment_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md mt-1.5 transition-all">
                         📎 View {item.attachment_name || 'Attachment'}
                       </a>
                     )}
@@ -528,7 +514,7 @@ function App() {
 
         {/* BINS TAB */}
         {activeTab === 'bins' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Bin Locations</h2>
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <h3 className="font-semibold text-sm mb-3 text-slate-700">Add New Bin</h3>
@@ -541,7 +527,7 @@ function App() {
             <h3 className="font-semibold text-sm mb-3 text-slate-600">Current Bins</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 max-h-96 overflow-y-auto">
               {bins.map((bin, index) => (
-                <div key={index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start animate-fadeIn">
+                <div key={index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start">
                   <div>
                     <p className="font-bold font-mono text-slate-800 text-base">{bin.bin_id}</p>
                     <p className="text-xs text-slate-500 mt-1">Zone: {bin.zone || 'General'}</p>
@@ -555,7 +541,7 @@ function App() {
 
         {/* ORDERS TAB */}
         {activeTab === 'orders' && (
-          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6 animate-fadeIn">
+          <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm p-6">
             <h2 className="text-lg font-bold mb-4 text-slate-800">Order Manifests</h2>
             <div className="mb-6 p-4 bg-slate-50 rounded-xl border border-slate-100">
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
@@ -585,12 +571,12 @@ function App() {
                     </div>
                   )}
                 </div>
-                <button onClick={addOrder} disabled={saving} className="sm:col-span-2 md:col-span-3 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2.5 px-4 rounded-lg shadow-sm">➕ Create Order</button>
+                <button onClick={addOrder} disabled={saving} className="sm:col-span-2 md:col-span-3 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2.5 px-4 rounded-lg">➕ Create Order</button>
               </div>
             </div>
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {orders.map((order, index) => (
-                <div key={index} className="border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-white shadow-xs">
+                <div key={index} className="border border-slate-100 p-4 rounded-xl flex flex-col sm:flex-row justify-between sm:items-center gap-3 bg-white shadow-xs animate-fadeIn">
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="font-bold font-mono text-slate-800">{order.order_id}</p>
@@ -604,9 +590,9 @@ function App() {
                     <div className="relative">
                       <button onClick={() => setShowStatusMenu(showStatusMenu === order.order_id ? null : order.order_id)} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${getStatusColor(order.status || 'Open')}`}>{order.status || 'Open'} ▼</button>
                       {showStatusMenu === order.order_id && (
-                        <div className="absolute right-0 mt-2 w-40 bg-slate-900 text-slate-200 rounded-xl shadow-xl z-30 p-1 text-xs animate-fadeIn">
+                        <div className="absolute right-0 mt-2 w-40 bg-slate-900 text-slate-200 rounded-xl shadow-xl z-30 p-1 text-xs">
                           {['Open', 'In Transit', 'Closed'].map(st => (
-                            <button key={st} onClick={() => updateOrderStatus(order.id, order.order_id, st)} className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 transition-all">{st}</button>
+                            <button key={st} onClick={() => updateOrderStatus(order.id, order.order_id, st)} className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800">{st}</button>
                           ))}
                         </div>
                       )}
@@ -630,14 +616,14 @@ function App() {
               <p className="text-xs text-slate-400 mt-1 mb-4">Ask Gemini to audit your live single-sheet database records and compile interactive data charts.</p>
               
               <div className="space-y-2 text-xs font-medium text-slate-300">
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Provide inventory report breakdown matching quantity per SKU")}>📈 "Provide inventory report breakdown matching quantity per SKU"</p>
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Show a breakdown report chart of order types")}>📊 "Show a breakdown report chart of order types"</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-800 transition-all" onClick={() => setAiPrompt("Provide inventory report breakdown matching quantity per SKU")}>📈 "Provide inventory report breakdown matching quantity per SKU"</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-800 transition-all" onClick={() => setAiPrompt("Show a breakdown report chart of order types")}>📊 "Show a breakdown report chart of order types"</p>
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Audit our storage bin allocations distribution")}>🗑️ "Audit our storage bin allocations distribution"</p>
               </div>
             </div>
 
             {/* Main Interactive Chat Area */}
-            <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[520px]">
+            <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden h-[520px]">
               <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 font-semibold text-sm text-slate-700">Analytics Data Stream Interface</div>
               
               <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/40">
@@ -672,7 +658,7 @@ function App() {
                 ))}
                 {aiLoading && (
                   <div className="flex items-center gap-2 text-xs text-slate-400 bg-white border border-slate-100 rounded-xl px-3 py-2 w-fit shadow-xs animate-pulse">
-                    <span className="text-blue-500">⚡</span> Gemini is analyzing sheet context matrices...
+                    <span className="text-blue-500 font-bold">⚡</span> Gemini is analyzing sheet context matrices...
                   </div>
                 )}
               </div>
@@ -680,7 +666,7 @@ function App() {
               <form onSubmit={submitAiQuery} className="border-t border-slate-100 p-3 bg-white flex gap-2">
                 <input
                   type="text"
-                  placeholder='Ask Gemini analyst... (e.g., "Analyze the sheet and show a chart")'
+                  placeholder='Ask Gemini analyst... (e.g. "Analyze the sheet and show a chart")'
                   className="flex-1 border border-slate-200 rounded-xl px-4 py-2.5 text-sm outline-none focus:border-blue-500 bg-slate-50/50"
                   value={aiPrompt}
                   onChange={(e) => setAiPrompt(e.target.value)}
