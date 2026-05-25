@@ -13,7 +13,7 @@ const BlueBinIcon = ({ className = "w-5 h-5" }) => (
     <path d="M15 36 L85 36 L76 61 L24 61 Z" fill="#1263d4" stroke="#0c4da6" strokeWidth="1.5" />
     <path d="M10 32 Q10 29 15 29 L85 29 Q90 29 90 32 L88 38 Q88 41 83 41 L17 41 Q12 41 12 38 Z" fill="#1673f5" stroke="#105ec9" strokeWidth="1" />
     <path d="M10 32 L15 3 L23 3 L16 30 Z" fill="#1673f5" />
-    <path d="M15 3 strokeLinecap" fill="#3288ff" opacity="0.7" />
+    <path d="M15 3 L23 3 L20 31 L14 31 Z" fill="#3288ff" opacity="0.7" />
     <path d="M90 32 L85 3 L77 3 L84 30 Z" fill="#1260cb" />
     <path d="M85 3 L77 3 L79 31 L85 31 Z" fill="#1671ee" opacity="0.5" />
     <path d="M21 3 L79 3 L79 5 L21 5 Z" fill="#105ec9" />
@@ -183,9 +183,9 @@ function App() {
           status: 'Available'
         };
       } else if (action === 'ADD_ORDER') {
-        // Validation: Check if SKU exists to enforce master description synchronization
-        const cleanSku = payload.sku.toUpperCase();
-        const existingStockMatch = stock.find(item => item.sku && item.sku.toString().toUpperCase() === cleanSku);
+        // Validation: Fixed dynamic lookup matching to prevent type crash on numerical sheet values
+        const cleanSku = payload.sku ? String(payload.sku).toUpperCase() : '';
+        const existingStockMatch = stock.find(item => item.sku && String(item.sku).toUpperCase() === cleanSku);
         const dynamicDescription = existingStockMatch ? existingStockMatch.description : (payload.description || 'AI Agent Client Order');
 
         bodyPayload = {
@@ -194,7 +194,7 @@ function App() {
           customer: payload.customer || 'AI Agent Client',
           type: payload.type || 'Inbound',
           sku: cleanSku,
-          description: dynamicDescription, // Clean sync verification
+          description: dynamicDescription,
           quantity: parseInt(payload.quantity, 10) || 0,
           bin: payload.bin.toUpperCase(),
           status: 'Open',
@@ -202,7 +202,7 @@ function App() {
         };
       } else if (action === 'UPDATE_STATUS') {
         const targetOrder = orders.find(
-          o => o.order_id && o.order_id.toString().toUpperCase() === payload.order_id.toUpperCase()
+          o => o.order_id && String(o.order_id).toUpperCase() === String(payload.order_id).toUpperCase()
         );
 
         if (!targetOrder) {
@@ -327,11 +327,11 @@ function App() {
     const quantityToAdd = parseInt(newProduct.quantity, 10) || 0;
 
     if (!sku) { setMessage('❌ Please enter an SKU'); return; }
-    const existingItem = stock.find((item) => item.sku && item.sku.toString().toUpperCase() === sku && item.bin && item.bin.toString().toUpperCase() === bin);
+    const existingItem = stock.find((item) => item.sku && String(item.sku).toUpperCase() === sku && item.bin && String(item.bin).toUpperCase() === bin);
     if (!existingItem && !description) { setMessage('❌ Please enter a Description'); return; }
     if (!bin) { setMessage('❌ Please enter a Bin Location'); return; }
 
-    const binExists = bins.some((b) => b.bin_id && b.bin_id.toString().toUpperCase() === bin);
+    const binExists = bins.some((b) => b.bin_id && String(b.bin_id).toUpperCase() === bin);
     if (!binExists) { setMessage(`❌ Bin "${bin}" does not exist. Please add it in the Bins tab first.`); return; }
 
     let finalDescription = description;
@@ -343,7 +343,7 @@ function App() {
       finalDescription = existingItem.description || description;
       setMessage(`ℹ️ Quantity updated! New total: ${finalQuantity} (was ${existingQty})`);
     } else {
-      const existingSKU = stock.find((item) => item.sku && item.sku.toString().toUpperCase() === sku);
+      const existingSKU = stock.find((item) => item.sku && String(item.sku).toUpperCase() === sku);
       if (existingSKU) {
         const existingDesc = existingSKU.description?.trim();
         if (existingDesc && existingDesc.toLowerCase() !== description.toLowerCase()) {
@@ -407,7 +407,7 @@ function App() {
       return;
     }
     if (type === 'Outbound') {
-      const match = stock.find(i => i.sku === sku.toUpperCase() && i.bin === bin.toUpperCase());
+      const match = stock.find(i => i.sku && String(i.sku).toUpperCase() === sku.toUpperCase() && i.bin && String(i.bin).toUpperCase() === bin.toUpperCase());
       const availableQty = match ? (parseInt(match.quantity, 10) || 0) : 0;
       if (availableQty < parseInt(quantity, 10)) {
         setConfirmModal({
@@ -430,11 +430,11 @@ function App() {
     setSaving(true);
     try {
       const cleanSku = sku.trim().toUpperCase();
-      // Look up master stock records for duplicate protection
-      const existingStockMatch = stock.find(item => item.sku && item.sku.toString().toUpperCase() === cleanSku);
+      // Validation Protection Lookup: Cast SKU parameter explicitly into a safe string object
+      const existingStockMatch = stock.find(item => item.sku && String(item.sku).toUpperCase() === cleanSku);
       
       if (existingStockMatch) {
-        console.log(`[Validation Protection] SKU ${cleanSku} detected. Inherited description profile: "${existingStockMatch.description}"`);
+        console.log(`[Validation Protection] SKU ${cleanSku} auto-matched description: "${existingStockMatch.description}"`);
       }
 
       const res = await fetch(API_URL, {
@@ -649,7 +649,7 @@ function App() {
                     />
                     {showBinSuggestions && bins.length > 0 && newProduct.bin && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                        {bins.filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newProduct.bin.toUpperCase())).slice(0, 5).map((bin, idx) => (
+                        {bins.filter(bin => bin.bin_id && String(bin.bin_id).toUpperCase().includes(newProduct.bin.toUpperCase())).slice(0, 5).map((bin, idx) => (
                           <div key={idx} className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0" onMouseDown={() => { setNewProduct({ ...newProduct, bin: bin.bin_id }); setShowBinSuggestions(false); }}>
                             <span className="font-mono">{bin.bin_id}</span>
                           </div>
@@ -753,7 +753,7 @@ function App() {
                     />
                     {showOrderBinSuggestions && bins.length > 0 && newOrder.bin && (
                       <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-                        {bins.filter(bin => bin.bin_id && bin.bin_id.toUpperCase().includes(newOrder.bin.toUpperCase())).slice(0, 5).map((bin, idx) => (
+                        {bins.filter(bin => bin.bin_id && String(bin.bin_id).toUpperCase().includes(newOrder.bin.toUpperCase())).slice(0, 5).map((bin, idx) => (
                           <div key={idx} className="px-3 py-2 text-sm hover:bg-blue-50 cursor-pointer border-b border-slate-100 last:border-0" onMouseDown={() => { setNewOrder({ ...newOrder, bin: bin.bin_id }); setShowOrderBinSuggestions(false); }}>
                             <span className="font-mono">{bin.bin_id}</span>
                           </div>
@@ -907,32 +907,32 @@ function App() {
                       onClick={toggleVoiceListening}
                       className={`absolute right-3 p-1.5 rounded-lg transition-all focus:outline-none ${isListening ? 'text-rose-600 bg-rose-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
                       title={isListening ? "Stop listening" : "Start voice control"}
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
-                    </svg>
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                      </svg>
+                    </button>
+                  </div>
+                  <button type="submit" disabled={aiLoading || !aiPrompt.trim()} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-medium px-5 py-2.5 rounded-xl transition-all shadow-xs shrink-0">
+                    Query
                   </button>
-                </div>
-                <button type="submit" disabled={aiLoading || !aiPrompt.trim()} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-medium px-5 py-2.5 rounded-xl transition-all shadow-xs shrink-0">
-                  Query
-                </button>
-              </form>
+                </form>
+              </div>
+
             </div>
-
-          </div>
-        )}
-      </main>
-    </div>
-
-    {/* SYSTEM COPYRIGHT FOOTER MAPPING */}
-    <footer className="w-full border-t border-slate-200 bg-white mt-12 py-5 text-center text-xs text-slate-400 font-medium tracking-wide">
-      <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-slate-500">
-        <p>© 2026 Saswat Mohapatra. All Rights Reserved.</p>
-        <p className="text-[10px] text-slate-400 font-mono">WMS Architecture v1.4.2</p>
+          )}
+        </main>
       </div>
-    </footer>
-  </div>
-);
+
+      {/* SYSTEM COPYRIGHT FOOTER MAPPING */}
+      <footer className="w-full border-t border-slate-200 bg-white mt-12 py-5 text-center text-xs text-slate-400 font-medium tracking-wide">
+        <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-slate-500">
+          <p>© 2026 Saswat Mohapatra. All Rights Reserved.</p>
+          <p className="text-[10px] text-slate-400 font-mono">WMS Architecture v1.4.2</p>
+        </div>
+      </footer>
+    </div>
+  );
 }
 
 export default App;
