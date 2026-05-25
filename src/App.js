@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 // Consolidated live deployment URL configured from your latest Google Apps Script environment pointer
-const API_URL = 'https://script.google.com/macros/s/AKfycbyAEvpcs4EHdg77mc0rXbDTazFaKJsz16YChMLTFcTF9KVAd78Ggv9PoH3rUUSy0--7/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycby14P1L73GRHf8BXaTFlKrlCbJ8Misk2QEbTUWBHnmZgY45M412FPFVDtNjztB6qBKU/exec';
 
 // Custom component mimicking your blue warehouse parts bin
 const BlueBinIcon = ({ className = "w-5 h-5" }) => (
@@ -41,7 +41,7 @@ function App() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const useRefRef = useRef(null);
+  const recognitionRef = useRef(null);
 
   const [chatLog, setChatLog] = useState([
     { 
@@ -87,19 +87,19 @@ function App() {
         setIsListening(false);
       };
 
-      useRefRef.current = rec;
+      recognitionRef.current = rec;
     }
   }, []);
 
   const toggleVoiceListening = () => {
-    if (!useRefRef.current) {
+    if (!recognitionRef.current) {
       setMessage("❌ Web Speech API is not supported inside this browser build.");
       return;
     }
     if (isListening) {
-      useRefRef.current.stop();
+      recognitionRef.current.stop();
     } else {
-      useRefRef.current.start();
+      recognitionRef.current.start();
     }
   };
 
@@ -252,7 +252,7 @@ function App() {
       `If the user explicitly requests a database addition, subtraction, creation, shipment change, or closure, analyze their variables and return the corresponding action and actionPayload in your structured JSON response. ` +
       `Supported actions and precise schemas:\n` +
       `1. Action: "ADD_PRODUCT" -> payload: { "sku": string, "description": string, "quantity": number, "bin": string }\n` +
-      `2. Action: "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n` +
+      `2. Action: "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n" +
       `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n` +
       `4. Action: "UPDATE_STATUS" -> payload: { "order_id": string, "status": "Open" | "In Transit" | "Closed" }\n\n` +
       `Return your output matches the core JSON response template:\n` +
@@ -430,10 +430,7 @@ function App() {
     try {
       const cleanSku = sku.trim().toUpperCase();
       const existingStockMatch = stock.find(item => item.sku && String(item.sku).toUpperCase() === cleanSku);
-      
-      if (existingStockMatch) {
-        console.log(`[Validation Protection] SKU ${cleanSku} auto-matched description: "${existingStockMatch.description}"`);
-      }
+      const targetDescription = existingStockMatch ? existingStockMatch.description : 'Manual Client Order';
 
       const res = await fetch(API_URL, {
         redirect: 'follow',
@@ -445,6 +442,7 @@ function App() {
           customer: customer.trim(), 
           type: type, 
           sku: cleanSku, 
+          description: targetDescription,
           quantity: parseInt(quantity, 10) || 0, 
           bin: bin.trim().toUpperCase(), 
           status: 'Open', 
