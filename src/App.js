@@ -3,6 +3,23 @@ import React, { useState, useEffect } from 'react';
 // Consolidated live deployment URL configured from your latest Google Apps Script environment pointer
 const API_URL = 'https://script.google.com/macros/s/AKfycbw7_2KbPf5v9iLFchvDu6PHF1j4hdsJUHKmFKxHYSm6pS3jn_-KTmooG9ghsPtF-829/exec';
 
+// Custom component mimicking your blue warehouse parts bin
+const BlueBinIcon = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 100 65" fill="none" xmlns="http://www.w3.org/2000/svg" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+    <path d="M12 4 L88 4 L82 35 L18 35 Z" fill="#0b4ca1" />
+    <path d="M18 35 L82 35 L75 60 L25 60 Z" fill="#073675" />
+    <path d="M12 4 L18 35 L25 60 L12 40 Z" fill="#094391" opacity="0.4" />
+    <path d="M88 4 L82 35 L75 60 L88 40 Z" fill="#073166" opacity="0.3" />
+    <path d="M15 36 L85 36 L76 61 L24 61 Z" fill="#1263d4" stroke="#0c4da6" strokeWidth="1.5" />
+    <path d="M10 32 Q10 29 15 29 L85 29 Q90 29 90 32 L88 38 Q88 41 83 41 L17 41 Q12 41 12 38 Z" fill="#1673f5" stroke="#105ec9" strokeWidth="1" />
+    <path d="M10 32 L15 3 L23 3 L16 30 Z" fill="#1673f5" />
+    <path d="M15 3 L23 3 L20 31 L14 31 Z" fill="#3288ff" opacity="0.7" />
+    <path d="M90 32 L85 3 L77 3 L84 30 Z" fill="#1260cb" />
+    <path d="M85 3 L77 3 L79 31 L85 31 Z" fill="#1671ee" opacity="0.5" />
+    <path d="M21 3 L79 3 L79 5 L21 5 Z" fill="#105ec9" />
+  </svg>
+);
+
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [stock, setStock] = useState([]);
@@ -50,7 +67,6 @@ function App() {
       const allData = await response.json();
       const dataArray = Array.isArray(allData) ? allData : [];
 
-      // Split flat sheet rows dynamically using our smart column filters matching your single sheet database
       const stockData = dataArray
         .filter(row => row && row.sku && row.sku.toString().trim() !== '' && (!row.order_id || row.order_id.toString().trim() === ''))
         .map(row => ({ ...row, id: row.__row_number__ }));
@@ -98,7 +114,6 @@ function App() {
     });
   };
 
-  // === DYNAMIC AI AGENT DISPATCH ROUTER ===
   const handleAiProposedAction = async (action, payload) => {
     setSaving(true);
     setMessage('⚙️ Executing AI proposed database action...');
@@ -133,7 +148,6 @@ function App() {
           created_at: new Date().toISOString()
         };
       } else if (action === 'UPDATE_STATUS') {
-        // Locate matching tracking coordinates from internal order rows state
         const targetOrder = orders.find(
           o => o.order_id && o.order_id.toString().toUpperCase() === payload.order_id.toUpperCase()
         );
@@ -170,7 +184,6 @@ function App() {
     }
   };
 
-  // === TRIGGER GEMINI ANALYTICS ===
   const submitAiQuery = async (e) => {
     e.preventDefault();
     if (!aiPrompt.trim()) return;
@@ -180,7 +193,6 @@ function App() {
     setAiPrompt('');
     setAiLoading(true);
 
-    // Injected detailed AI Agent Capabilities directly into the prompt to guide Gemini's schema response
     const agentPromptInjection = 
       `${userQuery}\n\n` +
       `[AI AGENT CAPABILITY MANUAL]\n` +
@@ -216,7 +228,6 @@ function App() {
       if (data.status === 'error') {
         let errorMessage = data.message || 'Error occurred while analyzing sheets.';
         
-        // Handle rate limit messages gracefully in UI dashboard chat log
         if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('RATE_LIMIT_EXCEEDED')) {
           errorMessage = "⏳ The AI Co-Pilot is currently busy or rate-limited on the Free Tier quota. Please wait 60 seconds and try your request again.";
         } else {
@@ -474,7 +485,7 @@ function App() {
         </div>
       )}
 
-      {/* PREMIUM IN-APP MODAL (Saves native dialog lockouts) */}
+      {/* PREMIUM IN-APP MODAL */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
           <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl border border-slate-100">
@@ -507,7 +518,7 @@ function App() {
           {[
             { id: 'dashboard', label: 'Dashboard', icon: '📊' },
             { id: 'stock', label: 'Stock', icon: '📦' },
-            { id: 'bins', label: 'Bins', icon: '🗑️' },
+            { id: 'bins', label: 'Bins', icon: <BlueBinIcon className="w-4 h-4" /> },
             { id: 'orders', label: 'Orders', icon: '📝' },
             { id: 'reporting', label: 'AI Co-Pilot', icon: '🤖' }
           ].map(tab => (
@@ -517,7 +528,7 @@ function App() {
               className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:bg-white/50'}`}
             >
               <span>{tab.icon}</span>
-              <span className="hidden sm:inline">{tab.label}</span>
+              <span className="hidden sm:inline-block ml-1">{tab.label}</span>
             </button>
           ))}
         </nav>
@@ -530,7 +541,7 @@ function App() {
               {[
                 { title: 'Units in Stock', count: stock.reduce((s, i) => s + (parseInt(i?.quantity, 10) || 0), 0), color: 'from-blue-500 to-indigo-600', icon: '📦', targetTab: 'stock' },
                 { title: 'Unique SKUs', count: stock.length, color: 'from-emerald-500 to-teal-600', icon: '🏷️', targetTab: 'stock' },
-                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: '🗑️', targetTab: 'bins' },
+                { title: 'Allocated Locations', count: bins.length, color: 'from-violet-500 to-purple-600', icon: <BlueBinIcon className="w-6 h-6 invert brightness-200" />, targetTab: 'bins' },
                 { title: 'Active Pipelines', count: orders.length, color: 'from-amber-500 to-orange-600', icon: '📋', targetTab: 'orders' }
               ].map((card, idx) => (
                 <button
@@ -576,7 +587,6 @@ function App() {
                   )}
                 </div>
 
-                {/* ATTACHMENT SELECTION AREA */}
                 <div className="sm:col-span-2">
                   <div className="flex items-center gap-3">
                     <input type="file" className="hidden" id="file-upload" onChange={(e) => setSelectedFile(e.target.files[0])} />
@@ -611,7 +621,7 @@ function App() {
                       </a>
                     )}
                   </div>
-                  <button onClick={() => requestItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2">🗑️</button>
+                  <button onClick={() => requestItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2"><BlueBinIcon className="w-4 h-4 opacity-40 hover:opacity-100 transition-all" /></button>
                 </div>
               ))}
             </div>
@@ -635,10 +645,13 @@ function App() {
               {bins.map((bin, index) => (
                 <div key={index} className="border border-slate-100 bg-slate-50/50 p-4 rounded-xl flex justify-between items-start">
                   <div>
-                    <p className="font-bold font-mono text-slate-800 text-base">{bin.bin_id}</p>
-                    <p className="text-xs text-slate-500 mt-1">Zone: {bin.zone || 'General'}</p>
+                    <p className="font-bold font-mono text-slate-800 text-base flex items-center gap-2">
+                      <BlueBinIcon className="w-5 h-5" />
+                      <span>{bin.bin_id}</span>
+                    </p>
+                    <p className="text-xs text-slate-500 mt-1 pl-7">Zone: {bin.zone || 'General'}</p>
                   </div>
-                  <button onClick={() => requestItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5">🗑️</button>
+                  <button onClick={() => requestItemRemoval(bin.id, bin.bin_id)} className="text-slate-300 hover:text-rose-600 p-1.5 opacity-40 hover:opacity-100 transition-all">✕</button>
                 </div>
               ))}
             </div>
@@ -703,7 +716,7 @@ function App() {
                         </div>
                       )}
                     </div>
-                    <button onClick={() => requestItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-rose-600 p-2">🗑️</button>
+                    <button onClick={() => requestItemRemoval(order.id, order.order_id)} className="text-slate-300 hover:text-rose-600 p-2 opacity-40 hover:opacity-100 transition-all">✕</button>
                   </div>
                 </div>
               ))}
@@ -723,7 +736,9 @@ function App() {
               
               <div className="space-y-2 text-xs font-medium text-slate-300">
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101")}>📦 "Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101"</p>
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>🗑️ "Create a new bin B-205 in Zone B"</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all flex items-center gap-1.5" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>
+                  <BlueBinIcon className="w-3.5 h-3.5 invert brightness-200" /> "Create a new bin B-205 in Zone B"
+                </p>
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Route an outbound order ORD-501 for customer AppleStore with 5 units of SKU-BANANA from Bin A-101")}>📝 "Route an outbound order ORD-501 for customer AppleStore..."</p>
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Close order ORD-509")}>🔒 "Close order ORD-509"</p>
               </div>
@@ -739,7 +754,6 @@ function App() {
                     <div className={`max-w-[85%] rounded-2xl p-4 text-sm shadow-xs space-y-2 ${chat.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-slate-200/60 text-slate-800 rounded-tl-none'}`}>
                       <p className="leading-relaxed whitespace-pre-wrap text-xs md:text-sm">{chat.text}</p>
                       
-                      {/* AI Proposed Modification Interceptor Option */}
                       {chat.action && chat.actionPayload && (
                         <div className="mt-3 p-3 bg-blue-50 border border-blue-200 text-slate-800 rounded-xl space-y-2">
                           <div className="flex items-center gap-1.5">
