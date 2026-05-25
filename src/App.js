@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 
 // Consolidated live deployment URL configured from your latest Google Apps Script environment pointer
-const API_URL = 'https://script.google.com/macros/s/AKfycbyNORlBxr5etju9KHNCwXauAsHDPxN07ujb-FcGlSHOeK1clYe-YOlHGiEbIzqUK3Mm/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbw7_2KbPf5v9iLFchvDu6PHF1j4hdsJUHKmFKxHYSm6pS3jn_-KTmooG9ghsPtF-829/exec';
 
 function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -155,15 +155,19 @@ function App() {
     }
   };
 
-  // === AUXILIARY LLM TRIGGER ROUTER ===
-  const triggerCoPilotQuery = async (customPrompt, displayUserQueryText) => {
-    setActiveTab('reporting');
-    setChatLog(prev => [...prev, { role: 'user', text: displayUserQueryText || customPrompt }]);
+  // === TRIGGER GEMINI ANALYTICS ===
+  const submitAiQuery = async (e) => {
+    e.preventDefault();
+    if (!aiPrompt.trim()) return;
+
+    const userQuery = aiPrompt.trim();
+    setChatLog(prev => [...prev, { role: 'user', text: userQuery }]);
     setAiPrompt('');
     setAiLoading(true);
 
+    // Injected detailed AI Agent Capabilities directly into the prompt to guide Gemini's schema response
     const agentPromptInjection = 
-      `${customPrompt}\n\n` +
+      `${userQuery}\n\n` +
       `[AI AGENT CAPABILITY MANUAL]\n` +
       `You have the direct authority to propose database actions (adding products, creating bins, or staging orders). ` +
       `If the user explicitly requests a database addition, subtraction, creation, or shipment change, analyze their variables and return the corresponding action and actionPayload in your structured JSON response. ` +
@@ -173,7 +177,7 @@ function App() {
       `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n\n` +
       `Return your output matches the core JSON response template:\n` +
       `{\n` +
-      `  "text": "Your natural language response explaining what you did, what you prepared, or answering standard prompts.",\n` +
+      `  "text": "Your natural language response explaining what you did, what you prepared, or answering standard prompts.",\n" +
       `  "hasChart": false,\n` +
       `  "action": "ADD_PRODUCT" | "ADD_BIN" | "ADD_ORDER" | null,\n` +
       `  "actionPayload": { ... corresponding matching parameters object ... } | null\n` +
@@ -194,9 +198,18 @@ function App() {
       const data = await res.json();
 
       if (data.status === 'error') {
+        let errorMessage = data.message || 'Error occurred while analyzing sheets.';
+        
+        // Handle rate limit messages gracefully in UI dashboard chat log
+        if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('RATE_LIMIT_EXCEEDED')) {
+          errorMessage = "⏳ The AI Co-Pilot is currently busy or rate-limited on the Free Tier quota. Please wait 60 seconds and try your request again.";
+        } else {
+          errorMessage = `❌ Gemini Backend Error: ${errorMessage}\n\nPlease verify that your Google Sheet contains valid database entries.`;
+        }
+
         setChatLog(prev => [...prev, {
           role: 'assistant',
-          text: `❌ Gemini Backend Error: ${data.message || 'Error occurred while analyzing sheets.'}`,
+          text: errorMessage,
           hasChart: false
         }]);
       } else if (data.text) {
@@ -211,7 +224,7 @@ function App() {
       } else {
         setChatLog(prev => [...prev, {
           role: 'assistant',
-          text: "⚠️ Gemini returned an empty summary. Try reformatting your request.",
+          text: "⚠️ Gemini returned an empty text summary. Try asking in a different format, such as: 'Show stock quantities matching active SKUs.'",
           hasChart: false
         }]);
       }
@@ -219,19 +232,12 @@ function App() {
       console.error(err);
       setChatLog(prev => [...prev, { 
         role: 'assistant', 
-        text: `❌ Connection failure. Make sure your Apps Script is deployed under "Anyone".`, 
+        text: `❌ Connection failure. Make sure your Apps Script Web App is running with Me/Anyone authorization privileges and that you redeployed the script correctly.`, 
         hasChart: false 
       }]);
     } finally {
       setAiLoading(false);
     }
-  };
-
-  // === TRIGGER GEMINI ANALYTICS ===
-  const submitAiQuery = (e) => {
-    e.preventDefault();
-    if (!aiPrompt.trim()) return;
-    triggerCoPilotQuery(aiPrompt.trim(), aiPrompt.trim());
   };
 
   const addProduct = async () => {
@@ -583,21 +589,11 @@ function App() {
                     </div>
                     <p className="text-xs text-slate-500 mt-1">Quantity: {item.quantity || 0} | Bin: {item.bin || 'None'}</p>
                     
-                    <div className="flex items-center gap-2 mt-2">
-                      {item.attachment_url && (
-                        <a href={item.attachment_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition-all">
-                          📎 View Attachment
-                        </a>
-                      )}
-                      
-                      {/* LLM POWERED STOCK COMPASS ACTION */}
-                      <button 
-                        onClick={() => triggerCoPilotQuery(`Analyze historical demand velocity, and restock necessity suggestions for our SKU: ${item.sku}. The description of this item is ${item.description || 'N/A'}. Its current physical stock quantity sitting in Bin ${item.bin} is ${item.quantity}. Give a clear restock warning and velocity categorization.`, `Analyze WMS SKU demand velocity for ${item.sku}`)}
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2 py-0.5 rounded-md transition-all"
-                      >
-                        ✨ Analyze Demand & Restock
-                      </button>
-                    </div>
+                    {item.attachment_url && (
+                      <a href={item.attachment_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md mt-1.5 transition-all">
+                        📎 View {item.attachment_name || 'Attachment'}
+                      </a>
+                    )}
                   </div>
                   <button onClick={() => requestItemRemoval(item.id, item.sku)} className="text-slate-300 hover:text-rose-600 p-2">🗑️</button>
                 </div>
@@ -679,15 +675,6 @@ function App() {
                     <div className="mt-1 flex gap-3 text-xs font-mono text-slate-600">
                       <span>SKU: {order.sku}</span> | <span>QTY: {order.quantity}</span> | <span>BIN: {order.bin}</span>
                     </div>
-                    <div className="mt-2.5 flex items-center gap-2">
-                      {/* LLM POWERED CORRESPONDENCE DISPATCH INJECTION */}
-                      <button 
-                        onClick={() => triggerCoPilotQuery(`Draft a highly professional supplier dispatch, arrival notice, or purchase fulfillment notification email corresponding to WMS Order ID: ${order.order_id}. This order is flagged as ${order.type} for customer/vendor: ${order.customer}. It comprises ${order.quantity} units of SKU ${order.sku} sitting inside Bin ${order.bin}. Write with perfect clear salutations, tracking reference lines, and warehouse coordination details.`, `Draft WMS notification email for Order ${order.order_id}`)}
-                        className="inline-flex items-center gap-1.5 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1 rounded-md transition-all border border-indigo-200/50"
-                      >
-                        ✨ Draft dispatch/inbound email
-                      </button>
-                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <div className="relative">
@@ -719,15 +706,14 @@ function App() {
               <p className="text-xs text-slate-400 mt-1 mb-4">Command your intelligent co-pilot to audit live logs, compile data charts, or **create new stock, bins, and orders!**</p>
               
               <div className="space-y-2 text-xs font-medium text-slate-300">
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101")}>📦 "Add product SKU-BANANA (Fresh Banana)..."</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101")}>📦 "Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101"</p>
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>🗑️ "Create a new bin B-205 in Zone B"</p>
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Route an outbound order ORD-501 for customer AppleStore with 5 units of SKU-BANANA from Bin A-101")}>📝 "Route an outbound order ORD-501..."</p>
-                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Audit the sheet for negative quantities, orders that exceed available inventory, or unregistered bin destinations.")}>🔍 "Audit for negative quantities, stock exceptions..."</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Route an outbound order ORD-501 for customer AppleStore with 5 units of SKU-BANANA from Bin A-101")}>📝 "Route an outbound order ORD-501 for customer AppleStore..."</p>
               </div>
             </div>
 
             {/* Main Interactive Chat Area */}
-            <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200/60 shadow-sm overflow-hidden h-[540px]">
+            <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[540px]">
               <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 font-semibold text-sm text-slate-700">Co-Pilot Command Deck</div>
               
               <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/40">
@@ -742,7 +728,7 @@ function App() {
                           <div className="flex items-center gap-1.5">
                             <span className="text-blue-600 font-bold text-xs">🤖 Proposed Database Change</span>
                           </div>
-                          <div className="text-[11px] font-mono bg-white p-2 rounded border border-blue-100 max-h-40 overflow-auto text-slate-900">
+                          <div className="text-[11px] font-mono bg-white p-2 rounded border border-blue-100 max-h-40 overflow-auto">
                             <p><strong>Action:</strong> {chat.action}</p>
                             <p className="mt-1"><strong>Payload:</strong> {JSON.stringify(chat.actionPayload, null, 2)}</p>
                           </div>
