@@ -252,7 +252,7 @@ function App() {
       `If the user explicitly requests a database addition, subtraction, creation, shipment change, or closure, analyze their variables and return the corresponding action and actionPayload in your structured JSON response. ` +
       `Supported actions and precise schemas:\n` +
       `1. Action: "ADD_PRODUCT" -> payload: { "sku": string, "description": string, "quantity": number, "bin": string }\n` +
-      `2. Action: "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n" +
+      `2. Action: "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n` +
       `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n` +
       `4. Action: "UPDATE_STATUS" -> payload: { "order_id": string, "status": "Open" | "In Transit" | "Closed" }\n\n` +
       `Return your output matches the core JSON response template:\n` +
@@ -344,10 +344,10 @@ function App() {
     } else {
       const existingSKU = stock.find((item) => item.sku && String(item.sku).toUpperCase() === sku);
       if (existingSKU) {
-        const existingDesc = existingSKU.description?.trim();
-        if (existingDesc && existingDesc.toLowerCase() !== description.toLowerCase()) {
-          finalDescription = existingDesc;
-          setMessage(`ℹ️ Description auto-corrected to match SKU profile: "${existingDesc}"`);
+        const StarsDesc = existingSKU.description?.trim();
+        if (StarsDesc && StarsDesc.toLowerCase() !== description.toLowerCase()) {
+          finalDescription = StarsDesc;
+          setMessage(`ℹ️ Description auto-corrected to match SKU profile: "${StarsDesc}"`);
         }
       }
     }
