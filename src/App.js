@@ -46,7 +46,7 @@ function App() {
   const [chatLog, setChatLog] = useState([
     { 
       role: 'assistant', 
-      text: 'Hello! I am your interactive Gemini WMS Co-Pilot. Not only can I analyze your records, but I can also help modify them! \n\nTry asking me actions like:\n• "Create product SKU-HONEY (Honey Jar) with quantity 20 in Bin A-101"\n• "Add a new bin B-205 in Zone B"\n• "Route an outbound order ORD-707 for customer Alice with 5 apples from Bin A-102"\n• "Close order ORD-509"\n\n👉 Click the microphone icon to command me using your voice!', 
+      text: 'Hello! I am your advanced Gemini 3.5 WMS Intelligence Hub. Beyond modifying records, I can now perform cross-tab calculations, render multi-metric analytical charts, and run real-time stock balance audits!\n\nTry asking me advanced operational diagnostics like:\n• "Give me an operational audit report on our current inventory health and pipeline load"\n• "Graph a visual bar breakdown of our items sorted by quantity levels"\n• "Add product SKU-HONEY with quantity 50 in Bin A-101"\n• "Close order ORD-509"', 
       hasChart: false 
     }
   ]);
@@ -245,22 +245,26 @@ function App() {
     setAiPrompt('');
     setAiLoading(true);
 
+    // [ADVANCED UPGRADE]: Expanded Manual context to prompt complex chart structures and core statistical breakdowns
     const agentPromptInjection = 
       `${userQuery}\n\n` +
-      `[AI AGENT CAPABILITY MANUAL]\n` +
-      `You have the direct authority to propose database actions (adding products, creating bins, staging orders, or updating status properties). ` +
-      `If the user explicitly requests a database addition, subtraction, creation, shipment change, or closure, analyze their variables and return the corresponding action and actionPayload in your structured JSON response. ` +
-      `Supported actions and precise schemas:\n` +
-      `1. Action: "ADD_PRODUCT" -> payload: { "sku": string, "description": string, "quantity": number, "bin": string }\n` +
-      `2. Action: "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n` +
-      `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n` +
-      `4. Action: "UPDATE_STATUS" -> payload: { "order_id": string, "status": "Open" | "In Transit" | "Closed" }\n\n` +
-      `Return your output matches the core JSON response template:\n` +
+      `[ADVANCED AI AGENT CAPABILITY MANUAL]\n` +
+      `You are the primary cognitive reasoning layer of this WMS dashboard. You have direct access to evaluate all components simultaneously.\n` +
+      `1. DATA ANALYSIS & AUDITS: If the user requests an inventory health report, operational bottleneck analysis, stock evaluation, or tracking audit, cross-reference inventory levels against active pipeline orders to generate detailed conclusions.\n` +
+      `2. CHARTS & DATA VISUALIZATION: If the user explicitly asks to graph, visualize, compare, chart, or break down properties statistically (e.g. "Graph products sorted by quantity pools"), evaluate the math parameters, set "hasChart" to true, and provide complete payload entries inside "chartData".\n` +
+      `3. STRUCTURAL WRITE ACTIONS: If the user explicitly requests data insertion or tracking mutations, output matching properties inside 'action' and 'actionPayload'.\n\n` +
+      `Supported Mutation Formats:\n` +
+      `- "ADD_PRODUCT" -> payload: { "sku": string, "description": string, "quantity": number, "bin": string }\n` +
+      `- "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n` +
+      `- "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n` +
+      `- "UPDATE_STATUS" -> payload: { "order_id": string, "status": "Open" | "In Transit" | "Closed" }\n\n` +
+      `Your response MUST stringently map to this complete JSON layout structural template:\n` +
       `{\n` +
-      `  "text": "Your natural language response explaining what you did, what you prepared, or answering standard prompts.",\n` +
-      `  "hasChart": false,\n` +
+      `  "text": "Your textual explanation, analytic summaries, operational metrics forecast reports, or audit findings.",\n` +
+      `  "hasChart": boolean,\n` +
+      `  "chartData": [{ "label": string, "value": number }] | null,\n` +
       `  "action": "ADD_PRODUCT" | "ADD_BIN" | "ADD_ORDER" | "UPDATE_STATUS" | null,\n` +
-      `  "actionPayload": { ... corresponding matching parameters object ... } | null\n` +
+      `  "actionPayload": { ... matching variables object ... } | null\n` +
       `}`;
 
     try {
@@ -538,7 +542,7 @@ function App() {
               <span className="text-3xl">📦</span>
               <div>
                 <h1 className="text-xl font-bold tracking-tight">SmallBiz WMS</h1>
-                <p className="text-xs text-slate-400">Powered by Google Scripts & Gemini AI (Single-Sheet Version)</p>
+                <p className="text-xs text-slate-400">Advanced AI Core Engine v2.2.0 [Gemini 3.5 Enabled]</p>
               </div>
             </div>
             <div className="text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded border border-slate-700">System Online</div>
@@ -587,7 +591,7 @@ function App() {
               { id: 'stock', label: 'Stock', icon: '📦' },
               { id: 'bins', label: 'Bin', icon: <BlueBinIcon className="w-4 h-4" /> },
               { id: 'orders', label: 'Orders', icon: '📝' },
-              { id: 'reporting', label: 'AI Co-Pilot', icon: '🤖' }
+              { id: 'reporting', label: 'AI Co-Pilot Hub', icon: '🤖' }
             ].map(tab => (
               <button
                 key={tab.id}
@@ -798,16 +802,15 @@ function App() {
               {/* Options Quick Actions Panel */}
               <div className="md:col-span-1 bg-gradient-to-b from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-sm h-fit animate-slideUp">
                 <div className="text-xl mb-2">🤖</div>
-                <h2 className="text-base font-bold tracking-tight text-white">Gemini AI Co-Pilot</h2>
-                <p className="text-xs text-slate-400 mt-1 mb-4">Command your intelligent co-pilot to audit live logs, compile data charts, or **create new stock, bins, and orders!**</p>
+                <h2 className="text-base font-bold tracking-tight text-white">Gemini AI Co-Pilot Hub</h2>
+                <p className="text-xs text-slate-400 mt-1 mb-4">Command your intelligent co-pilot to **run cross-tab analytics dashboards, compile statistics charts, or audit core pipeline health load metrics!**</p>
                 
                 <div className="space-y-2 text-xs font-medium text-slate-300">
-                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101")}>📦 "Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101"</p>
+                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Give me an operational audit report on our current inventory health and pipeline load")}>📊 "Give me an operational audit report..."</p>
+                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Graph a visual bar breakdown of our items sorted by quantity levels")}>📈 "Graph a visual bar breakdown of our items..."</p>
                   <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all flex items-center gap-1.5" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>
                     <BlueBinIcon className="w-3.5 h-3.5 invert brightness-200" /> "Create a new bin B-205 in Zone B"
                   </p>
-                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Route an outbound order ORD-501 for customer AppleStore with 5 units of SKU-BANANA from Bin A-101")}>📝 "Route an outbound order ORD-501 for customer AppleStore..."</p>
-                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Close order ORD-509")}>🔒 "Close order ORD-509"</p>
                 </div>
               </div>
 
