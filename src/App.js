@@ -26,7 +26,7 @@ function App() {
   const [chatLog, setChatLog] = useState([
     { 
       role: 'assistant', 
-      text: 'Hello! I am your interactive Gemini WMS Co-Pilot. Not only can I analyze your records, but I can also help modify them! \n\nTry asking me actions like:\n• "Create product SKU-HONEY (Honey Jar) with quantity 20 in Bin A-101"\n• "Add a new bin B-205 in Zone B"\n• "Route an outbound order ORD-707 for customer Alice with 5 apples from Bin A-102"', 
+      text: 'Hello! I am your interactive Gemini WMS Co-Pilot. Not only can I analyze your records, but I can also help modify them! \n\nTry asking me actions like:\n• "Create product SKU-HONEY (Honey Jar) with quantity 20 in Bin A-101"\n• "Add a new bin B-205 in Zone B"\n• "Route an outbound order ORD-707 for customer Alice with 5 apples from Bin A-102"\n• "Close order ORD-509"', 
       hasChart: false 
     }
   ]);
@@ -132,6 +132,21 @@ function App() {
           status: 'Open',
           created_at: new Date().toISOString()
         };
+      } else if (action === 'UPDATE_STATUS') {
+        // Locate matching tracking coordinates from internal order rows state
+        const targetOrder = orders.find(
+          o => o.order_id && o.order_id.toString().toUpperCase() === payload.order_id.toUpperCase()
+        );
+
+        if (!targetOrder) {
+          throw new Error(`Order ID "${payload.order_id}" could not be matched inside the live system matrix logs.`);
+        }
+
+        bodyPayload = {
+          action: 'UPDATE_STATUS',
+          rowNumber: parseInt(targetOrder.id, 10),
+          status: payload.status
+        };
       }
 
       const res = await fetch(API_URL, {
@@ -149,7 +164,7 @@ function App() {
       }]);
       await loadData();
     } catch (err) {
-      setMessage('❌ Failed to execute proposed AI action');
+      setMessage(err.message || '❌ Failed to execute proposed AI action');
     } finally {
       setSaving(false);
     }
@@ -169,17 +184,18 @@ function App() {
     const agentPromptInjection = 
       `${userQuery}\n\n` +
       `[AI AGENT CAPABILITY MANUAL]\n` +
-      `You have the direct authority to propose database actions (adding products, creating bins, or staging orders). ` +
-      `If the user explicitly requests a database addition, subtraction, creation, or shipment change, analyze their variables and return the corresponding action and actionPayload in your structured JSON response. ` +
+      `You have the direct authority to propose database actions (adding products, creating bins, staging orders, or updating status properties). ` +
+      `If the user explicitly requests a database addition, subtraction, creation, shipment change, or closure, analyze their variables and return the corresponding action and actionPayload in your structured JSON response. ` +
       `Supported actions and precise schemas:\n` +
       `1. Action: "ADD_PRODUCT" -> payload: { "sku": string, "description": string, "quantity": number, "bin": string }\n` +
       `2. Action: "ADD_BIN" -> payload: { "bin_id": string, "zone": string }\n` +
-      `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n\n` +
+      `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n` +
+      `4. Action: "UPDATE_STATUS" -> payload: { "order_id": string, "status": "Open" | "In Transit" | "Closed" }\n\n` +
       `Return your output matches the core JSON response template:\n` +
       `{\n` +
       `  "text": "Your natural language response explaining what you did, what you prepared, or answering standard prompts.",\n` +
       `  "hasChart": false,\n` +
-      `  "action": "ADD_PRODUCT" | "ADD_BIN" | "ADD_ORDER" | null,\n` +
+      `  "action": "ADD_PRODUCT" | "ADD_BIN" | "ADD_ORDER" | "UPDATE_STATUS" | null,\n` +
       `  "actionPayload": { ... corresponding matching parameters object ... } | null\n` +
       `}`;
 
@@ -709,6 +725,7 @@ function App() {
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101")}>📦 "Add product SKU-BANANA (Fresh Banana) with quantity 200 in bin A-101"</p>
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>🗑️ "Create a new bin B-205 in Zone B"</p>
                 <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Route an outbound order ORD-501 for customer AppleStore with 5 units of SKU-BANANA from Bin A-101")}>📝 "Route an outbound order ORD-501 for customer AppleStore..."</p>
+                <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Close order ORD-509")}>🔒 "Close order ORD-509"</p>
               </div>
             </div>
 
