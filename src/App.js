@@ -46,7 +46,7 @@ function App() {
   const [chatLog, setChatLog] = useState([
     { 
       role: 'assistant', 
-      text: 'Hello! I am your advanced Gemini 3.5 WMS Intelligence Hub. Beyond modifying records, I can now perform cross-tab calculations, render multi-metric analytical charts, and run real-time stock balance audits!\n\nTry asking me advanced operational diagnostics like:\n• "Give me an operational audit report on our current inventory health and pipeline load"\n• "Graph a visual bar breakdown of our items sorted by quantity levels"\n• "Add product SKU-HONEY with quantity 50 in Bin A-101"\n• "Close order ORD-509"', 
+      text: 'Hello! I am your advanced Gemini 3.5 WMS Intelligence Hub. Beyond modifying records, I can now perform cross-tab calculations, render multi-metric analytical charts, and run real-time stock balance audits!\n\nTry asking me advanced operational diagnostics like:\n• "Give me an operational audit report on our current inventory health and pipeline load"\n• "Graph a visual bar breakdown of our items sorted by quantity pools"\n• "Add product SKU-HONEY with quantity 50 in Bin A-101"\n• "Close order ORD-509"', 
       hasChart: false 
     }
   ]);
@@ -245,7 +245,6 @@ function App() {
     setAiPrompt('');
     setAiLoading(true);
 
-    // [ADVANCED UPGRADE]: Expanded Manual context to prompt complex chart structures and core statistical breakdowns
     const agentPromptInjection = 
       `${userQuery}\n\n` +
       `[ADVANCED AI AGENT CAPABILITY MANUAL]\n` +
@@ -807,7 +806,7 @@ function App() {
                 
                 <div className="space-y-2 text-xs font-medium text-slate-300">
                   <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Give me an operational audit report on our current inventory health and pipeline load")}>📊 "Give me an operational audit report..."</p>
-                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Graph a visual bar breakdown of our items sorted by quantity levels")}>📈 "Graph a visual bar breakdown of our items..."</p>
+                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Graph a visual bar breakdown of our items sorted by quantity pools")}>📈 "Graph a visual bar breakdown of our items..."</p>
                   <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all flex items-center gap-1.5" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>
                     <BlueBinIcon className="w-3.5 h-3.5 invert brightness-200" /> "Create a new bin B-205 in Zone B"
                   </p>
