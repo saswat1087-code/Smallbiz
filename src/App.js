@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 
 // Consolidated live deployment URL configured from your latest Google Apps Script environment pointer
-const API_URL = 'https://script.google.com/macros/s/AKfycbw7_2KbPf5v9iLFchvDu6PHF1j4hdsJUHKmFKxHYSm6pS3jn_-KTmooG9ghsPtF-829/exec';
+const API_URL = 'https://script.google.com/macros/s/AKfycbyAEvpcs4EHdg77mc0rXbDTazFaKJsz16YChMLTFcTF9KVAd78Ggv9PoH3rUUSy0--7/exec';
 
 // Custom component mimicking your blue warehouse parts bin
 const BlueBinIcon = ({ className = "w-5 h-5" }) => (
@@ -41,7 +41,7 @@ function App() {
   const [aiPrompt, setAiPrompt] = useState('');
   const [aiLoading, setAiLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const recognitionRef = useRef(null);
+  const useRefRef = useRef(null);
 
   const [chatLog, setChatLog] = useState([
     { 
@@ -87,19 +87,19 @@ function App() {
         setIsListening(false);
       };
 
-      recognitionRef.current = rec;
+      useRefRef.current = rec;
     }
   }, []);
 
   const toggleVoiceListening = () => {
-    if (!recognitionRef.current) {
+    if (!useRefRef.current) {
       setMessage("❌ Web Speech API is not supported inside this browser build.");
       return;
     }
     if (isListening) {
-      recognitionRef.current.stop();
+      useRefRef.current.stop();
     } else {
-      recognitionRef.current.start();
+      useRefRef.current.start();
     }
   };
 
@@ -183,7 +183,6 @@ function App() {
           status: 'Available'
         };
       } else if (action === 'ADD_ORDER') {
-        // Validation: Fixed dynamic lookup matching to prevent type crash on numerical sheet values
         const cleanSku = payload.sku ? String(payload.sku).toUpperCase() : '';
         const existingStockMatch = stock.find(item => item.sku && String(item.sku).toUpperCase() === cleanSku);
         const dynamicDescription = existingStockMatch ? existingStockMatch.description : (payload.description || 'AI Agent Client Order');
@@ -430,7 +429,6 @@ function App() {
     setSaving(true);
     try {
       const cleanSku = sku.trim().toUpperCase();
-      // Validation Protection Lookup: Cast SKU parameter explicitly into a safe string object
       const existingStockMatch = stock.find(item => item.sku && String(item.sku).toUpperCase() === cleanSku);
       
       if (existingStockMatch) {
