@@ -518,17 +518,17 @@ function App() {
             {[
               { id: 'dashboard', label: 'Dashboard', icon: '📊' },
               { id: 'stock', label: 'Stock', icon: '📦' },
-              { id: 'bins', label: <BlueBinIcon className="w-4 h-4" /> },
+              { id: 'bins', label: 'Bin', icon: <BlueBinIcon className="w-4 h-4" /> },
               { id: 'orders', label: 'Orders', icon: '📝' },
               { id: 'reporting', label: 'AI Co-Pilot', icon: '🤖' }
             ].map(tab => (
               <button
                 key={tab.id}
                 onClick={() => { setActiveTab(tab.id); setShowStatusMenu(null); }}
-                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:bg-white/50'}`}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm font-semibold' : 'text-slate-600 hover:bg-white/50'}`}
               >
-                <span>{tab.icon}</span>
-                <span className="hidden sm:inline-block ml-1">{tab.label}</span>
+                <span className="flex items-center justify-center">{tab.icon}</span>
+                <span className="hidden sm:inline-block font-medium">{tab.label}</span>
               </button>
             ))}
           </nav>
