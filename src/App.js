@@ -177,7 +177,7 @@ function App() {
       `3. Action: "ADD_ORDER" -> payload: { "order_id": string, "customer": string, "type": "Inbound" | "Outbound", "sku": string, "quantity": number, "bin": string }\n\n` +
       `Return your output matches the core JSON response template:\n` +
       `{\n` +
-      `  "text": "Your natural language response explaining what you did, what you prepared, or answering standard prompts.",\n" +
+      `  "text": "Your natural language response explaining what you did, what you prepared, or answering standard prompts.",\n` +
       `  "hasChart": false,\n` +
       `  "action": "ADD_PRODUCT" | "ADD_BIN" | "ADD_ORDER" | null,\n` +
       `  "actionPayload": { ... corresponding matching parameters object ... } | null\n` +
