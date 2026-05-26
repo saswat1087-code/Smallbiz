@@ -36,9 +36,11 @@ function App() {
   const [selectedFile, setSelectedFile] = useState(null);
   const [newBin, setNewBin] = useState({ bin_id: '', zone: '' });
   const [newOrder, setNewOrder] = useState({ order_id: '', customer: '', type: 'Inbound', sku: '', quantity: '', bin: '' });
+  const [orderFile, setOrderFile] = useState(null);
 
   // === AI CHAT & VOICE CORE STATES ===
   const [aiPrompt, setAiPrompt] = useState('');
+  const [aiFile, setAiFile] = useState(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef(null);
@@ -46,7 +48,7 @@ function App() {
   const [chatLog, setChatLog] = useState([
     { 
       role: 'assistant', 
-      text: 'Hello! I am your advanced Gemini 3.5 WMS Intelligence Hub. Beyond modifying records, I can now perform cross-tab calculations, render multi-metric analytical charts, and run real-time stock balance audits!\n\nTry asking me advanced operational diagnostics like:\n• "Give me an operational audit report on our current inventory health and pipeline load"\n• "Graph a visual bar breakdown of our items sorted by quantity pools"\n• "Add product SKU-HONEY with quantity 50 in Bin A-101"\n• "Close order ORD-509"', 
+      text: 'Hello! I am your advanced Gemini 3.5 WMS Intelligence Hub. Beyond modifying records, I can now perform cross-tab calculations, render multi-metric analytical charts, visually audit quality photograph samples, and run real-time stock balance audits!\n\nTry asking me advanced operational diagnostics like:\n• "Give me an operational audit report on our current inventory health and pipeline load"\n• "Graph a visual bar breakdown of our items sorted by quantity pools"\n• "Add product SKU-HONEY with quantity 50 in Bin A-101"\n• "Close order ORD-509"', 
       hasChart: false 
     }
   ]);
@@ -115,7 +117,7 @@ function App() {
       const dataArray = Array.isArray(allData) ? allData : [];
 
       const stockData = dataArray
-        .filter(row => row && row.sku && row.sku.toString().trim() !== '' && (!row.order_id || row.order_id.toString().trim() === ''))
+        .filter(row => row && row.sku && row.sku.toString().trim() !== '' && (!row.order_id || row.order_id.toString().trim() === '') && row.type !== 'BIN_LOCATION')
         .map(row => ({ ...row, id: row.__row_number__ }));
 
       const binsData = dataArray
@@ -245,10 +247,20 @@ function App() {
     setAiPrompt('');
     setAiLoading(true);
 
+    let base64StringFile = null;
+    if (aiFile) {
+      try {
+        base64StringFile = await convertFileToBase64(aiFile);
+      } catch (err) {
+        console.error("Error processing graphic conversion asset pipeline:", err);
+      }
+    }
+
     const agentPromptInjection = 
       `${userQuery}\n\n` +
       `[ADVANCED AI AGENT CAPABILITY MANUAL]\n` +
       `You are the primary cognitive reasoning layer of this WMS dashboard. You have direct access to evaluate all components simultaneously.\n` +
+      `You are equipped with multimodal capabilities: you can natively look at sample photos, tracking forms, vouchers, box defects, or labels if attached.\n\n` +
       `1. DATA ANALYSIS & AUDITS: If the user requests an inventory health report, operational bottleneck analysis, stock evaluation, or tracking audit, cross-reference inventory levels against active pipeline orders to generate detailed conclusions.\n` +
       `2. CHARTS & DATA VISUALIZATION: If the user explicitly asks to graph, visualize, compare, chart, or break down properties statistically (e.g. "Graph products sorted by quantity pools"), evaluate the math parameters, set "hasChart" to true, and provide complete payload entries inside "chartData".\n` +
       `3. STRUCTURAL WRITE ACTIONS: If the user explicitly requests data insertion or tracking mutations, output matching properties inside 'action' and 'actionPayload'.\n\n` +
@@ -273,7 +285,8 @@ function App() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({
           action: 'ANALYZE_SHEET',
-          prompt: agentPromptInjection
+          prompt: agentPromptInjection,
+          fileData: base64StringFile
         })
       });
 
@@ -310,6 +323,7 @@ function App() {
           hasChart: false
         }]);
       }
+      setAiFile(null);
     } catch (err) {
       console.error(err);
       setChatLog(prev => [...prev, { 
@@ -435,6 +449,12 @@ function App() {
       const existingStockMatch = stock.find(item => item.sku && String(item.sku).toUpperCase() === cleanSku);
       const targetDescription = existingStockMatch ? existingStockMatch.description : 'Manual Client Order';
 
+      let fileDataPayload = {};
+      if (orderFile) {
+        const base64Str = await convertFileToBase64(orderFile);
+        fileDataPayload = { fileData: base64Str, fileName: orderFile.name };
+      }
+
       const res = await fetch(API_URL, {
         redirect: 'follow',
         method: 'POST',
@@ -449,11 +469,13 @@ function App() {
           quantity: parseInt(quantity, 10) || 0, 
           bin: bin.trim().toUpperCase(), 
           status: 'Open', 
-          created_at: new Date().toISOString() 
+          created_at: new Date().toISOString(),
+          ...fileDataPayload
         })
       });
       if (!res.ok) throw new Error();
       setNewOrder({ order_id: '', customer: '', type: 'Inbound', sku: '', quantity: '', bin: '' });
+      setOrderFile(null);
       setMessage('✅ Order generated successfully!');
       await loadData();
     } catch {
@@ -541,7 +563,7 @@ function App() {
               <span className="text-3xl">📦</span>
               <div>
                 <h1 className="text-xl font-bold tracking-tight">SmallBiz WMS</h1>
-                <p className="text-xs text-slate-400">Advanced AI Core Engine v2.2.0 [Gemini 3.5 Enabled]</p>
+                <p className="text-xs text-slate-400">Advanced AI Core Engine v2.5.5 [Gemini 3.5 Enabled]</p>
               </div>
             </div>
             <div className="text-xs font-mono bg-slate-800 text-emerald-400 px-3 py-1.5 rounded border border-slate-700">System Online</div>
@@ -760,6 +782,21 @@ function App() {
                       </div>
                     )}
                   </div>
+
+                  <div className="sm:col-span-2 md:col-span-3">
+                    <div className="flex items-center gap-3">
+                      <input type="file" className="hidden" id="order-file-upload" onChange={(e) => setOrderFile(e.target.files[0])} />
+                      <label htmlFor="order-file-upload" className="flex-1 border border-dashed border-slate-300 rounded-xl p-2.5 text-center text-xs text-slate-600 hover:bg-slate-50 cursor-pointer transition-all truncate">
+                        {orderFile ? `📎 ${orderFile.name}` : '📁 Attach Inbound Waybill Slip / Custom Manifest Document (Optional)'}
+                      </label>
+                      {orderFile && (
+                        <button type="button" onClick={() => setOrderFile(null)} className="text-xs font-semibold text-rose-500 hover:text-rose-700 bg-rose-50 p-2.5 rounded-lg border border-rose-200">
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
                   <button onClick={addOrder} disabled={saving} className="sm:col-span-2 md:col-span-3 bg-blue-600 hover:bg-blue-700 text-white text-sm py-2.5 px-4 rounded-lg">➕ Create Order</button>
                 </div>
               </div>
@@ -774,6 +811,11 @@ function App() {
                       <div className="mt-1 flex gap-3 text-xs font-mono text-slate-600">
                         <span>SKU: {order.sku}</span> | <span>QTY: {order.quantity}</span> | <span>BIN: {order.bin}</span>
                       </div>
+                      {order.attachment_url && (
+                        <a href={order.attachment_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md mt-1.5 transition-all">
+                          📎 View Attached Voucher
+                        </a>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="relative">
@@ -796,26 +838,26 @@ function App() {
 
           {/* AI CO-PILOT TAB */}
           {activeTab === 'reporting' && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-fadeIn items-start">
               
               {/* Options Quick Actions Panel */}
-              <div className="md:col-span-1 bg-gradient-to-b from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-sm h-fit animate-slideUp">
+              <div className="md:col-span-1 bg-gradient-to-b from-slate-900 to-slate-800 text-white p-5 rounded-2xl shadow-sm h-auto animate-slideUp">
                 <div className="text-xl mb-2">🤖</div>
                 <h2 className="text-base font-bold tracking-tight text-white">Gemini AI Co-Pilot Hub</h2>
-                <p className="text-xs text-slate-400 mt-1 mb-4">Command your intelligent co-pilot to **run cross-tab analytics dashboards, compile statistics charts, or audit core pipeline health load metrics!**</p>
+                <p className="text-xs text-slate-400 mt-1 mb-4">Command your intelligent co-pilot to **run cross-tab analytics dashboards, compile statistics charts, process picture test samples, or audit core pipeline health load metrics!**</p>
                 
                 <div className="space-y-2 text-xs font-medium text-slate-300">
-                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Give me an operational audit report on our current inventory health and pipeline load")}>📊 "Give me an operational audit report..."</p>
-                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all" onClick={() => setAiPrompt("Graph a visual bar breakdown of our items sorted by quantity pools")}>📈 "Graph a visual bar breakdown of our items..."</p>
+                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all truncate" onClick={() => setAiPrompt("Give me an operational audit report on our current inventory health and pipeline load")}>📊 "Give me an operational audit report..."</p>
+                  <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all truncate" onClick={() => setAiPrompt("Graph a visual bar breakdown of our items sorted by quantity pools")}>📈 "Graph a visual bar breakdown of our items..."</p>
                   <p className="bg-slate-800/80 p-2.5 rounded border border-slate-700 cursor-pointer hover:bg-slate-700 transition-all flex items-center gap-1.5" onClick={() => setAiPrompt("Create a new bin B-205 in Zone B")}>
                     <BlueBinIcon className="w-3.5 h-3.5 invert brightness-200" /> "Create a new bin B-205 in Zone B"
                   </p>
                 </div>
               </div>
 
-              {/* Main Interactive Chat Area */}
-              <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden h-[540px]">
-                <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 font-semibold text-sm text-slate-700 flex items-center justify-between">
+              {/* Main Interactive Chat Area - Secure Viewport Containment Height Fix */}
+              <div className="md:col-span-2 flex flex-col bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[460px] max-h-[540px]">
+                <div className="bg-slate-50 border-b border-slate-100 px-4 py-3 font-semibold text-sm text-slate-700 flex items-center justify-between shrink-0">
                   <span>Co-Pilot Command Deck</span>
                   {isListening && (
                     <span className="flex items-center gap-1.5 text-xs font-semibold text-rose-500 animate-pulse bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
@@ -890,30 +932,58 @@ function App() {
                   )}
                 </div>
 
-                <form onSubmit={submitAiQuery} className="border-t border-slate-100 p-3 bg-white flex gap-2 items-center">
-                  <div className="relative flex-1 flex items-center">
-                    <input
-                      type="text"
-                      placeholder='Command your Co-Pilot or use voice...'
-                      className="w-full border border-slate-200 rounded-xl pl-4 pr-12 py-2.5 text-sm outline-none focus:border-blue-500 bg-slate-50/50"
-                      value={aiPrompt}
-                      onChange={(e) => setAiPrompt(e.target.value)}
-                      disabled={aiLoading}
-                    />
-                    <button
-                      type="button"
-                      onClick={toggleVoiceListening}
-                      className={`absolute right-3 p-1.5 rounded-lg transition-all focus:outline-none ${isListening ? 'text-rose-600 bg-rose-100' : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'}`}
-                      title={isListening ? "Stop listening" : "Start voice control"}
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
-                      </svg>
+                {/* Fixed Action Panel Footer Tray Containment Component */}
+                <form onSubmit={submitAiQuery} className="border-t border-slate-100 p-3 bg-white flex flex-col gap-2 shrink-0">
+                  {aiFile && (
+                    <div className="text-xs text-blue-600 font-medium px-2 flex justify-between items-center bg-blue-50 p-1.5 rounded-lg border border-blue-100 animate-fadeIn">
+                      <span className="truncate">📎 File ready for processing: {aiFile.name}</span>
+                      <button type="button" onClick={() => setAiFile(null)} className="text-rose-500 font-bold px-1 text-sm hover:text-rose-700">✕</button>
+                    </div>
+                  )}
+                  <div className="flex gap-2 items-center w-full">
+                    <div className="relative flex-1 flex items-center">
+                      <input
+                        type="text"
+                        placeholder='Command your Co-Pilot, attach pictures, use voice...'
+                        className="w-full border border-slate-200 rounded-xl pl-4 pr-24 py-2.5 text-sm outline-none focus:border-blue-500 bg-slate-50/50"
+                        value={aiPrompt}
+                        onChange={(e) => setAiPrompt(e.target.value)}
+                        disabled={aiLoading}
+                      />
+                      <div className="absolute right-3 flex items-center gap-2.5">
+                        <input 
+                          type="file" 
+                          className="hidden" 
+                          id="ai-multimodal-file-selector" 
+                          accept="image/*,application/pdf"
+                          onChange={(e) => setAiFile(e.target.files[0])} 
+                        />
+                        <label 
+                          htmlFor="ai-multimodal-file-selector" 
+                          className="text-slate-400 hover:text-slate-600 cursor-pointer transition-all flex items-center justify-center p-0.5"
+                          title="Attach snapshot for image sample analysis"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0110 6h4a2.309 2.309 0 012.173 1.175l.416.723a1.157 1.157 0 00.916.518h2a2.25 2.25 0 012.25 2.25v7.5A2.25 2.25 0 0119.5 20.5h-15a2.25 2.25 0 01-2.25-2.25v-7.5a2.25 2.25 0 012.25-2.25h2c.356 0 .69-.163.916-.418l.416-.723z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15 13.5a3 3 0 11-6 0 3 3 0 016 0z" />
+                          </svg>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={toggleVoiceListening}
+                          className={`p-0.5 transition-all focus:outline-none ${isListening ? 'text-rose-600' : 'text-slate-400 hover:text-slate-600'}`}
+                          title={isListening ? "Stop listening" : "Start voice control"}
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"></path>
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <button type="submit" disabled={aiLoading || !aiPrompt.trim()} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-medium px-5 py-2.5 rounded-xl transition-all shadow-xs shrink-0">
+                      Query
                     </button>
                   </div>
-                  <button type="submit" disabled={aiLoading || !aiPrompt.trim()} className="bg-slate-900 hover:bg-slate-800 disabled:bg-slate-200 text-white disabled:text-slate-400 text-sm font-medium px-5 py-2.5 rounded-xl transition-all shadow-xs shrink-0">
-                    Query
-                  </button>
                 </form>
               </div>
 
@@ -926,7 +996,7 @@ function App() {
       <footer className="w-full border-t border-slate-200 bg-white mt-12 py-5 text-center text-xs text-slate-400 font-medium tracking-wide">
         <div className="max-w-6xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2 text-slate-500">
           <p>© 2026 Saswat Mohapatra. All Rights Reserved.</p>
-          <p className="text-[10px] text-slate-400 font-mono">WMS Architecture v1.4.2</p>
+          <p className="text-[10px] text-slate-400 font-mono">WMS Architecture v2.5.5</p>
         </div>
       </footer>
     </div>
